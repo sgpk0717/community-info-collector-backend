@@ -23,10 +23,6 @@ class Settings(BaseSettings):
     # OpenAI API
     OPENAI_API_KEY: str = ""
     
-    # Supabase
-    SUPABASE_URL: str = ""
-    SUPABASE_SERVICE_KEY: str = ""
-    
     class Config:
         case_sensitive = True
 

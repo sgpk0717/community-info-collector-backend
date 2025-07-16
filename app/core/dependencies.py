@@ -1,11 +1,6 @@
-from supabase import create_client, Client
 from app.config import settings
 import praw
 import openai
-
-def get_supabase_client() -> Client:
-    """Get Supabase client instance"""
-    return create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
 
 def get_reddit_client() -> praw.Reddit:
     """Get Reddit client instance"""
