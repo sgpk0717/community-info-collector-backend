@@ -4,11 +4,11 @@ services:
     env: python
     plan: free
     region: singapore
-    buildCommand: pip install --no-cache-dir --upgrade pip setuptools wheel && pip install --no-cache-dir -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: python3.11 -m pip install --no-cache-dir --upgrade pip setuptools wheel && python3.11 -m pip install --no-cache-dir -r requirements.txt
+    startCommand: python3.11 -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
-        value: "3.11"
+        value: "3.11.9"
       - key: PORT
         value: "10000"
       - key: PYTHONPATH
