@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     
     # CORS settings
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8081"]
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8081", "https://community-info-collector-backend.onrender.com"]
     
     # Reddit API
     REDDIT_CLIENT_ID: str = ""
