@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.api.v1.router import api_router
+from app.core.dependencies import setup_openai
 import logging
 
 # 컬러 로깅 설정
@@ -70,6 +71,9 @@ async def root():
 @app.on_event("startup")
 async def startup_event():
     """앱 시작 시 실행"""
+    # OpenAI API 키 설정
+    setup_openai()
+    
     logger.info("="*80)
     logger.info(f"🚀 {settings.APP_NAME} v{settings.APP_VERSION} 서버 시작!")
     logger.info(f"🌍 환경: {settings.APP_ENV}")

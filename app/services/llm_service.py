@@ -1,5 +1,5 @@
 from typing import List, Dict, Any, Optional
-from openai import OpenAI
+import openai
 from app.core.exceptions import OpenAIAPIException
 from app.schemas.search import ReportLength
 import logging
@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class LLMService:
     def __init__(self):
-        self.client = OpenAI()
+        pass  # OpenAI 0.28.1에서는 따로 클라이언트를 초기화하지 않음
     
     async def translate_to_english(self, query: str) -> str:
         """한글 키워드를 영어로 번역"""
@@ -21,17 +21,17 @@ class LLMService:
             Keyword: {query}
             """
             
-            response = self.client.chat.completions.create(
-                model="gpt-4.1",
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
                 messages=[
-                    {"role": "developer", "content": "You are a professional translator."},
+                    {"role": "system", "content": "You are a professional translator."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
                 max_tokens=100
             )
             
-            return response.choices[0].message.content.strip()
+            return response['choices'][0]['message']['content'].strip()
             
         except Exception as e:
             logger.error(f"Translation error: {str(e)}")
@@ -55,17 +55,17 @@ class LLMService:
             Example format: ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
             """
             
-            response = self.client.chat.completions.create(
-                model="gpt-4.1",
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
                 messages=[
-                    {"role": "developer", "content": "You are a keyword expansion expert."},
+                    {"role": "system", "content": "You are a keyword expansion expert."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.7,
                 max_tokens=200
             )
             
-            content = response.choices[0].message.content.strip()
+            content = response['choices'][0]['message']['content'].strip()
             
             # JSON 파싱 시도
             try:
@@ -129,32 +129,32 @@ Important:
 - End with a "References" section mapping footnotes to post information
 """
             
-            response = self.client.chat.completions.create(
-                model="gpt-4.1",
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
                 messages=[
-                    {"role": "developer", "content": "You are a professional community analyst who creates insightful reports in Korean."},
+                    {"role": "system", "content": "You are a professional community analyst who creates insightful reports in Korean."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.7,
                 max_tokens=2000 if length == ReportLength.detailed else 1000
             )
             
-            full_report = response.choices[0].message.content.strip()
+            full_report = response['choices'][0]['message']['content'].strip()
             
             # 요약 생성 (한글)
             summary_prompt = f"다음 한국어 보고서의 핵심 내용을 한국어로 2-3문장으로 요약해주세요:\n\n{full_report[:1000]}"
             
-            summary_response = self.client.chat.completions.create(
-                model="gpt-4.1",
+            summary_response = openai.ChatCompletion.create(
+                model="gpt-4",
                 messages=[
-                    {"role": "developer", "content": "You are a summarization expert."},
+                    {"role": "system", "content": "You are a summarization expert."},
                     {"role": "user", "content": summary_prompt}
                 ],
                 temperature=0.5,
                 max_tokens=200
             )
             
-            summary = summary_response.choices[0].message.content.strip()
+            summary = summary_response['choices'][0]['message']['content'].strip()
             
             # 각주 매핑 추출
             footnote_mapping = self._extract_footnote_mapping(full_report, posts)
