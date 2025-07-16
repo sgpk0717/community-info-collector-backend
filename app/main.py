@@ -82,9 +82,9 @@ async def startup_event():
     logger.info("🎯 컬러 로깅 시스템 활성화됨")
     logger.info("🔍 Reddit API 연결 준비됨")
     logger.info("🤖 OpenAI API 연결 준비됨")
-    logger.info("💾 메모리 저장소 준비됨")
+    logger.info("💾 Supabase 데이터베이스 연결 준비됨")
     logger.info("="*80)
-    logger.info("✅ 간단한 테스트 시스템 준비 완료!")
+    logger.info("✅ 모든 시스템 준비 완료! 분석 요청을 기다리는 중...")
     logger.info("="*80)
 
 @app.on_event("shutdown")
