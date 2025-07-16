@@ -3,10 +3,13 @@ services:
     name: community-info-collector-backend
     env: python
     plan: free
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    region: singapore
+    buildCommand: pip install --no-cache-dir --upgrade pip setuptools wheel && pip install --no-cache-dir -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11
+        value: "3.11"
       - key: PORT
-        value: 10000
+        value: "10000"
+      - key: PYTHONPATH
+        value: "."

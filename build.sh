@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Starting build process..."
+echo "🚀 Render 배포 시작..."
 
-# Upgrade pip
-python -m pip install --upgrade pip
+# pip 업그레이드
+python -m pip install --upgrade pip setuptools wheel
 
-# Install dependencies with no cache to avoid permission issues
-pip install --no-cache-dir -r requirements.txt
+# 의존성 설치 (캐시 사용 안함)
+pip install --no-cache-dir --upgrade -r requirements.txt
 
-echo "✅ Build completed successfully!"
+echo "✅ 빌드 완료!"
