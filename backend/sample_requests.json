@@ -1,0 +1,141 @@
+{
+  "search_api_samples": {
+    "basic_search": {
+      "description": "기본 검색 요청 (최소 필수 값만 포함)",
+      "request_body": {
+        "query": "테슬라의 미래",
+        "user_nickname": "test_user"
+      }
+    },
+    
+    "simple_report": {
+      "description": "간단한 보고서 요청",
+      "request_body": {
+        "query": "ChatGPT 활용법",
+        "sources": ["reddit"],
+        "user_nickname": "test_user",
+        "length": "simple"
+      }
+    },
+    
+    "moderate_report": {
+      "description": "보통 길이 보고서 요청 (기본값)",
+      "request_body": {
+        "query": "애플 비전프로",
+        "sources": ["reddit"],
+        "user_nickname": "demo_user",
+        "session_id": "demo_session_001",
+        "length": "moderate"
+      }
+    },
+    
+    "detailed_report": {
+      "description": "상세 보고서 요청",
+      "request_body": {
+        "query": "인공지능 트렌드",
+        "sources": ["reddit"],
+        "user_nickname": "sample_user",
+        "session_id": "sample_session_001",
+        "push_token": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]",
+        "length": "detailed"
+      }
+    },
+    
+    "with_schedule_daily": {
+      "description": "매일 오전 9시에 실행되는 스케줄 설정",
+      "request_body": {
+        "query": "암호화폐 동향",
+        "sources": ["reddit"],
+        "user_nickname": "test_user",
+        "length": "moderate",
+        "schedule_yn": "Y",
+        "schedule_period": 1440,
+        "schedule_count": 30,
+        "schedule_start_time": "2025-01-16T09:00:00"
+      }
+    },
+    
+    "with_schedule_weekly": {
+      "description": "매주 월요일에 실행되는 스케줄 설정",
+      "request_body": {
+        "query": "메타버스 최신 동향",
+        "sources": ["reddit"],
+        "user_nickname": "demo_user",
+        "length": "detailed",
+        "schedule_yn": "Y",
+        "schedule_period": 10080,
+        "schedule_count": 10,
+        "schedule_start_time": "2025-01-20T10:00:00"
+      }
+    },
+    
+    "with_schedule_hourly": {
+      "description": "매시간 실행되는 스케줄 설정",
+      "request_body": {
+        "query": "실시간 주식 동향",
+        "sources": ["reddit"],
+        "user_nickname": "sample_user",
+        "length": "simple",
+        "schedule_yn": "Y",
+        "schedule_period": 60,
+        "schedule_count": 24,
+        "schedule_start_time": "2025-01-15T18:00:00"
+      }
+    },
+    
+    "multiple_sources": {
+      "description": "여러 소스에서 검색 (현재는 reddit만 지원)",
+      "request_body": {
+        "query": "넷플릭스 신작",
+        "sources": ["reddit", "twitter", "threads"],
+        "user_nickname": "test_user",
+        "length": "moderate"
+      }
+    },
+    
+    "korean_keywords": {
+      "description": "한글 키워드 검색 예시",
+      "request_body": {
+        "query": "갤럭시 S25 루머",
+        "sources": ["reddit"],
+        "user_nickname": "test_user",
+        "session_id": "kr_session_001",
+        "length": "moderate"
+      }
+    },
+    
+    "english_keywords": {
+      "description": "영어 키워드 검색 예시",
+      "request_body": {
+        "query": "SpaceX Starship launch",
+        "sources": ["reddit"],
+        "user_nickname": "demo_user",
+        "length": "detailed"
+      }
+    }
+  },
+  
+  "notes": {
+    "required_fields": [
+      "query - 검색할 키워드 (필수)",
+      "user_nickname - 사용자 닉네임 (필수)"
+    ],
+    "optional_fields": [
+      "sources - 검색할 플랫폼 리스트 (기본값: ['reddit'])",
+      "session_id - 클라이언트 세션 ID",
+      "push_token - 푸시 알림 토큰",
+      "length - 보고서 길이: simple/moderate/detailed (기본값: moderate)",
+      "schedule_yn - 스케줄링 여부: Y/N (기본값: N)",
+      "schedule_period - 스케줄 주기(분 단위)",
+      "schedule_count - 스케줄 반복 횟수",
+      "schedule_start_time - 스케줄 시작 시간 (ISO 8601 형식)"
+    ],
+    "schedule_period_examples": {
+      "60": "매시간",
+      "720": "12시간마다",
+      "1440": "매일 (24시간)",
+      "10080": "매주 (7일)",
+      "43200": "매달 (30일)"
+    }
+  }
+}
