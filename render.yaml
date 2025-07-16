@@ -1,15 +1,10 @@
 services:
   - type: web
     name: community-info-collector-backend
-    env: python
+    env: docker
     plan: free
     region: singapore
-    buildCommand: python3.11 -m pip install --no-cache-dir --upgrade pip setuptools wheel && python3.11 -m pip install --no-cache-dir -r requirements.txt
-    startCommand: python3.11 -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    dockerfilePath: ./Dockerfile
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.9"
       - key: PORT
-        value: "10000"
-      - key: PYTHONPATH
-        value: "."
+        value: "8000"

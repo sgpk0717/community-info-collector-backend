@@ -1,7 +1,6 @@
 from pydantic import BaseSettings
 from typing import List
 import os
-from pathlib import Path
 
 class Settings(BaseSettings):
     # App settings
@@ -29,8 +28,6 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_KEY: str = ""
     
     class Config:
-        env_file = str(Path(__file__).parent.parent.parent / ".env")
         case_sensitive = True
-        extra = "ignore"  # .env의 추가 변수 무시
 
 settings = Settings()
