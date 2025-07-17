@@ -1,4 +1,4 @@
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 from typing import List
 import os
 
@@ -27,7 +27,6 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = ""
     SUPABASE_SERVICE_KEY: str = ""
     
-    class Config:
-        case_sensitive = True
+    model_config = {"case_sensitive": True}
 
 settings = Settings()
