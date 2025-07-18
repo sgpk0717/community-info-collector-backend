@@ -85,8 +85,11 @@ class LLMService:
     async def generate_report(self, posts: List[Dict[str, Any]], query: str, length: ReportLength) -> Dict[str, Any]:
         """수집된 게시물을 바탕으로 분석 보고서 생성"""
         try:
+            logger.info(f"📝 보고서 생성 시작 - 키워드: '{query}', 길이: {length.value}, 게시물 수: {len(posts)}")
+            
             # 게시물 정보 포맷팅
             posts_text = self._format_posts_for_prompt(posts[:30])  # 최대 30개 게시물
+            logger.info(f"📄 게시물 포맷팅 완료 - {min(len(posts), 30)}개 게시물 사용")
             
             # 보고서 길이에 따른 프롬프트 조정
             length_guide = {
@@ -111,24 +114,28 @@ Required sections (write all section headers and content in Korean):
 4. **인상적인 의견**: Highlight 2-3 most notable opinions or insights
 5. **종합 분석**: Overall community perspective and trends
 
-**IMPORTANT FOOTNOTE REQUIREMENTS:**
-- When referencing specific posts or opinions, add footnotes using [1], [2], [3] format
-- Use footnotes for direct quotes, specific claims, or notable opinions
-- At the end, provide a "References" section in Korean that lists:
-  - **참고 자료**
-  - [1] 게시물 1 제목 (r/subreddit)
-  - [2] 게시물 2 제목 (r/subreddit)
-  - etc.
+**CRITICAL FOOTNOTE REQUIREMENTS:**
+- When referencing specific posts or opinions, you MUST use the exact format [ref:POST_ID] where POST_ID is the Reddit post ID from the data
+- Example: "많은 사용자들이 배터리 문제를 지적했습니다 [ref:t3_abc123]. 특히 한 사용자는 성능이 50% 저하되었다고 보고했습니다 [ref:t3_def456]."
+- Use [ref:POST_ID] markers for:
+  - Direct quotes from posts
+  - Specific statistics or claims
+  - Notable opinions or insights
+  - Any fact that comes from a specific post
+- You can use multiple references in one sentence: [ref:id1][ref:id2]
+- These markers will be converted to numbered footnotes later, so use them liberally
+
+DO NOT create a References section - the system will handle that automatically.
 
 Important: 
 - The input data is in English, but write the ENTIRE report in Korean
 - Use markdown format
 - Maintain objective and balanced perspective
 - Translate key terms appropriately into Korean
-- Include footnotes [1], [2], [3] etc. when referencing specific posts
-- End with a "References" section mapping footnotes to post information
+- MUST include [ref:POST_ID] markers when referencing specific posts
 """
             
+            logger.info("🤖 OpenAI API 호출 시작...")
             response = self.client.chat.completions.create(
                 model="gpt-4",
                 messages=[
@@ -140,9 +147,19 @@ Important:
             )
             
             full_report = response.choices[0].message.content.strip()
+            logger.info(f"✅ OpenAI API 응답 수신 - 보고서 길이: {len(full_report)} 문자")
             
-            # 요약 생성 (한글)
-            summary_prompt = f"다음 한국어 보고서의 핵심 내용을 한국어로 2-3문장으로 요약해주세요:\n\n{full_report[:1000]}"
+            # 각주 매핑 추출 (변환 전)
+            footnote_mapping = self._extract_footnote_mapping(full_report, posts)
+            
+            # [ref:POST_ID]를 번호로 변환
+            logger.info("🔄 각주 변환 시작...")
+            processed_report = self._convert_refs_to_footnotes(full_report, footnote_mapping)
+            logger.info(f"✅ 각주 변환 완료 - {len(footnote_mapping)}개 각주 처리")
+            
+            # 요약 생성 (한글) - 변환된 보고서 사용
+            logger.info("📝 요약 생성 시작...")
+            summary_prompt = f"다음 한국어 보고서의 핵심 내용을 한국어로 2-3문장으로 요약해주세요:\n\n{processed_report[:1000]}"
             
             summary_response = self.client.chat.completions.create(
                 model="gpt-4",
@@ -155,18 +172,16 @@ Important:
             )
             
             summary = summary_response.choices[0].message.content.strip()
-            
-            # 각주 매핑 추출
-            footnote_mapping = self._extract_footnote_mapping(full_report, posts)
+            logger.info(f"✅ 요약 생성 완료 - {len(summary)} 문자")
             
             logger.info(f"🎉 AI 보고서 생성 완료!")
-            logger.info(f"   - 전체 보고서: {len(full_report)} 문자")
+            logger.info(f"   - 전체 보고서: {len(processed_report)} 문자")
             logger.info(f"   - 요약: {len(summary)} 문자")
             logger.info(f"   - 각주 수: {len(footnote_mapping)}개")
             
             return {
                 "summary": summary,
-                "full_report": full_report,
+                "full_report": processed_report,
                 "footnote_mapping": footnote_mapping
             }
             
@@ -185,6 +200,7 @@ Important:
             linguistic_flags = post.get('linguistic_flags', [])
             
             post_text = f"""[게시물 {i}]
+POST_ID: {post['id']}
 제목: {post['title']}
 점수: {post['score']} | 댓글: {post['num_comments']} | 루머점수: {rumor_score}/10
 서브레딧: r/{post['subreddit']} | 수집벡터: {vector_info}
@@ -197,32 +213,37 @@ Important:
         return "\n".join(formatted_posts)
     
     def _extract_footnote_mapping(self, report: str, posts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """보고서에서 각주 매핑 추출"""
+        """보고서에서 각주 매핑 추출 및 [ref:POST_ID]를 번호로 변환"""
         import re
         
         footnote_mapping = []
+        ref_to_footnote = {}  # POST_ID -> footnote_number 매핑
         
-        # 각주 패턴 찾기 [1], [2], [3] 등
-        footnote_pattern = r'\[(\d+)\]'
-        footnotes = re.findall(footnote_pattern, report)
+        # [ref:POST_ID] 패턴 찾기
+        ref_pattern = r'\[ref:([^\]]+)\]'
+        refs = re.findall(ref_pattern, report)
         
-        if not footnotes:
-            logger.info("📄 각주가 발견되지 않음")
+        if not refs:
+            logger.info("📄 참조가 발견되지 않음")
             return footnote_mapping
         
-        logger.info(f"🔗 각주 발견: {footnotes}")
+        logger.info(f"🔗 참조 발견: {len(refs)}개 (고유: {len(set(refs))}개)")
         
-        # 각주 번호에 맞는 게시물 매핑
-        for footnote_num in set(footnotes):
-            footnote_int = int(footnote_num)
-            
-            # 각주 번호에 맞는 게시물 인덱스 (배열이므로 -1)
-            post_index = footnote_int - 1
-            
-            if 0 <= post_index < len(posts):
-                post = posts[post_index]
+        # 고유한 POST_ID들을 추출하고 번호 할당
+        unique_refs = []
+        for ref in refs:
+            if ref not in ref_to_footnote:
+                unique_refs.append(ref)
+                ref_to_footnote[ref] = len(unique_refs)
+        
+        # 각 고유한 참조에 대해 게시물 정보 찾기
+        posts_by_id = {post['id']: post for post in posts}
+        
+        for post_id, footnote_number in ref_to_footnote.items():
+            if post_id in posts_by_id:
+                post = posts_by_id[post_id]
                 footnote_mapping.append({
-                    "footnote_number": footnote_int,
+                    "footnote_number": footnote_number,
                     "post_id": post['id'],
                     "url": post['url'],
                     "title": post['title'],
@@ -231,11 +252,40 @@ Important:
                     "created_utc": post['created_utc'],
                     "subreddit": post['subreddit'],
                     "author": post['author'],
-                    "position_in_report": footnote_int
+                    "position_in_report": footnote_number
                 })
+            else:
+                logger.warning(f"⚠️ 참조된 POST_ID를 찾을 수 없음: {post_id}")
         
         # 각주 번호순으로 정렬
         footnote_mapping.sort(key=lambda x: x['footnote_number'])
         
         logger.info(f"🔗 각주 매핑 완료: {len(footnote_mapping)}개")
         return footnote_mapping
+    
+    def _convert_refs_to_footnotes(self, report: str, footnote_mapping: List[Dict[str, Any]]) -> str:
+        """[ref:POST_ID] 마커를 번호 각주 [1], [2] 등으로 변환"""
+        import re
+        
+        # footnote_mapping에서 post_id -> footnote_number 매핑 생성
+        post_id_to_footnote = {
+            item['post_id']: item['footnote_number'] 
+            for item in footnote_mapping
+        }
+        
+        # 모든 [ref:POST_ID] 패턴을 찾아 번호로 변환
+        def replace_ref(match):
+            post_id = match.group(1)
+            if post_id in post_id_to_footnote:
+                return f"[{post_id_to_footnote[post_id]}]"
+            return match.group(0)  # 매핑이 없으면 원본 유지
+        
+        processed_report = re.sub(r'\[ref:([^\]]+)\]', replace_ref, report)
+        
+        # 보고서 끝에 참조 목록 추가
+        if footnote_mapping:
+            processed_report += "\n\n## 참조 목록\n\n"
+            for item in footnote_mapping:
+                processed_report += f"[{item['footnote_number']}] {item['title']} - r/{item['subreddit']} (점수: {item['score']}, 댓글: {item['comments']})\n"
+        
+        return processed_report
