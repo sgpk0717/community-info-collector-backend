@@ -25,12 +25,12 @@ tenacity==8.2.3
 bertopic==0.16.0
 sentence-transformers==2.2.2
 umap-learn==0.5.5
-hdbscan==0.8.33
+hdbscan>=0.8.38
 
 # Multi-agent framework
-langchain==0.1.0
-langchain-openai==0.0.2
-langchain-community==0.0.10
+langchain>=0.1.0
+langchain-openai>=0.0.2
+langchain-community>=0.0.10
 
 # Data processing
 numpy>=1.26.0
