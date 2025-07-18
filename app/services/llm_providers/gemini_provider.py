@@ -23,7 +23,7 @@ class GeminiProvider(BaseLLMProvider):
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다.")
         
-        self.model = model or "gemini-1.5-flash"
+        self.model = model or "gemini-2.0-flash-exp"
         self.base_url = "https://generativelanguage.googleapis.com/v1beta/models"
         logger.info(f"Gemini Provider 초기화 완료 - 모델: {self.model}")
     

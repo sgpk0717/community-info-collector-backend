@@ -106,6 +106,16 @@ class DatabaseService:
             # 각주 링크 데이터 준비
             links_data = []
             for link in footnote_mapping:
+                # created_utc를 Unix timestamp로 변환
+                created_utc_value = None
+                if link.get('created_utc'):
+                    try:
+                        # ISO 문자열을 datetime으로 파싱 후 timestamp로 변환
+                        dt = datetime.fromisoformat(link['created_utc'].replace('Z', '+00:00'))
+                        created_utc_value = dt.timestamp()
+                    except:
+                        logger.warning(f"created_utc 변환 실패: {link['created_utc']}")
+                
                 link_data = {
                     'report_id': report_id,
                     'footnote_number': link['footnote_number'],
@@ -113,7 +123,7 @@ class DatabaseService:
                     'title': link['title'],
                     'score': link['score'],
                     'comments': link['comments'],
-                    'created_utc': link['created_utc'],
+                    'created_utc': created_utc_value,  # Unix timestamp로 저장
                     'subreddit': link['subreddit'],
                     'author': link['author'],
                     'position_in_report': link['position_in_report'],
