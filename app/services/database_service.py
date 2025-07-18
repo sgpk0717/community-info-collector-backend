@@ -64,7 +64,7 @@ class DatabaseService:
         try:
             result = self.client.table('reports')\
                 .select("*")\
-                .eq('user_nickname', user_nickname)\
+                .ilike('user_nickname', user_nickname)\
                 .order('created_at', desc=True)\
                 .execute()
             
