@@ -42,6 +42,7 @@ class LLMService:
     
     async def translate_to_english(self, query: str) -> str:
         """한글 키워드를 영어로 번역"""
+        logger.info(f"🌐 번역 시작: '{query}'")
         try:
             prompt = f"""Translate the following Korean keyword to English. 
             If it's already in English, return as is.
@@ -57,18 +58,26 @@ class LLMService:
                 max_tokens=100
             )
             
-            return response.content
+            translated = response.content.strip()
+            logger.info(f"✅ 번역 완료: '{query}' → '{translated}'")
+            return translated
             
         except Exception as e:
-            logger.error(f"Translation error: {str(e)}")
+            logger.error(f"❌ 번역 중 오류 발생: {str(e)}")
+            logger.error(f"   Provider: {self.provider.provider_name}")
+            logger.error(f"   Model: {self.provider.default_model}")
+            logger.error(f"   Query: '{query}'")
+            import traceback
+            logger.error(f"   Stack trace:\n{traceback.format_exc()}")
             return query  # 실패 시 원본 반환
     
     async def expand_keywords(self, query: str) -> List[str]:
         """주어진 키워드를 확장하여 관련 검색어 생성 (영어)"""
+        logger.info(f"🔍 키워드 확장 시작: '{query}'")
         try:
             # 먼저 영어로 번역
             english_query = await self.translate_to_english(query)
-            logger.info(f"Translated query: {query} -> {english_query}")
+            logger.info(f"   번역된 쿼리: '{english_query}'")
             
             prompt = f"""Generate 5 related search keywords for: "{english_query}"
             
@@ -89,6 +98,7 @@ class LLMService:
             )
             
             content = response.content
+            logger.info(f"   LLM 응답 수신 (길이: {len(content)})")
             
             # JSON 파싱 시도
             try:
@@ -98,15 +108,22 @@ class LLMService:
                 
                 keywords = json.loads(content)
                 if isinstance(keywords, list):
-                    return keywords[:5]  # 최대 5개
+                    result = keywords[:5]  # 최대 5개
+                    logger.info(f"✅ 키워드 확장 완료: {len(result)}개 - {result}")
+                    return result
             except json.JSONDecodeError:
-                logger.warning(f"Failed to parse keywords JSON: {content}")
+                logger.warning(f"⚠️ JSON 파싱 실패, 원본: {content[:200]}...")
             
             # 파싱 실패 시 원본 키워드만 반환
+            logger.warning(f"⚠️ 키워드 확장 실패, 빈 리스트 반환")
             return []
             
         except Exception as e:
-            logger.error(f"LLM error in expand_keywords: {str(e)}")
+            logger.error(f"❌ 키워드 확장 중 오류: {str(e)}")
+            logger.error(f"   Provider: {self.provider.provider_name}")
+            logger.error(f"   Model: {self.provider.default_model}")
+            import traceback
+            logger.error(f"   Stack trace:\n{traceback.format_exc()}")
             return []  # 실패해도 계속 진행
     
     async def generate_report(self, posts: List[Dict[str, Any]], query: str, length: ReportLength) -> Dict[str, Any]:

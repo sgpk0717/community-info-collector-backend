@@ -22,6 +22,9 @@ async def search_and_analyze(
     background_tasks: BackgroundTasks
 ):
     """키워드 기반 커뮤니티 분석 요청"""
+    logger.info(f"🔍 검색 요청 수신 - 키워드: {request.query}, 사용자: {request.user_nickname}")
+    logger.info(f"   소스: {request.sources}, 길이: {request.length}")
+    
     try:
         # 세션 ID 생성 (클라이언트가 제공하지 않은 경우)
         session_id = request.session_id or str(uuid4())
@@ -60,6 +63,9 @@ async def search_and_analyze(
 
 async def process_analysis_task(request: SearchRequest, session_id: str, query_id: str):
     """백그라운드에서 실제 분석 수행"""
+    logger.info(f"🚀 백그라운드 분석 시작 - 세션: {session_id}, 쿼리: {query_id}")
+    logger.info(f"   키워드: {request.query}, 사용자: {request.user_nickname}")
+    
     try:
         analysis_service = AnalysisService()
         
