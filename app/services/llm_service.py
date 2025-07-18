@@ -1,15 +1,44 @@
-from typing import List, Dict, Any, Optional
-from openai import OpenAI
+from typing import List, Dict, Any, Optional, Literal
 from app.core.exceptions import OpenAIAPIException
 from app.schemas.search import ReportLength
+from app.services.llm_providers import BaseLLMProvider, OpenAIProvider, GeminiProvider
 import logging
 import json
+import os
 
 logger = logging.getLogger(__name__)
 
+# Provider 타입 정의
+LLMProviderType = Literal["openai", "gemini"]
+
+
 class LLMService:
-    def __init__(self):
-        self.client = OpenAI()  # OpenAI 1.58.1 방식
+    """다중 LLM Provider를 지원하는 통합 LLM Service"""
+    
+    def __init__(self, provider_type: Optional[LLMProviderType] = None):
+        """
+        LLMService 초기화
+        
+        Args:
+            provider_type: 사용할 LLM provider ("openai" 또는 "gemini")
+                          None인 경우 환경변수 LLM_PROVIDER에서 읽음 (기본값: "openai")
+        """
+        # Provider 타입 결정
+        if provider_type is None:
+            provider_type = os.getenv('LLM_PROVIDER', 'openai').lower()
+        
+        # Provider 초기화
+        self.provider = self._initialize_provider(provider_type)
+        logger.info(f"LLMService 초기화 완료 - Provider: {self.provider.provider_name}, Model: {self.provider.default_model}")
+    
+    def _initialize_provider(self, provider_type: str) -> BaseLLMProvider:
+        """Provider 타입에 따라 적절한 provider 인스턴스 생성"""
+        if provider_type == "openai":
+            return OpenAIProvider()
+        elif provider_type == "gemini":
+            return GeminiProvider()
+        else:
+            raise ValueError(f"지원하지 않는 provider 타입: {provider_type}")
     
     async def translate_to_english(self, query: str) -> str:
         """한글 키워드를 영어로 번역"""
@@ -21,17 +50,14 @@ class LLMService:
             Keyword: {query}
             """
             
-            response = self.client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a professional translator."},
-                    {"role": "user", "content": prompt}
-                ],
+            response = await self.provider.generate(
+                prompt=prompt,
+                system_prompt="You are a professional translator.",
                 temperature=0.3,
                 max_tokens=100
             )
             
-            return response.choices[0].message.content.strip()
+            return response.content
             
         except Exception as e:
             logger.error(f"Translation error: {str(e)}")
@@ -55,20 +81,21 @@ class LLMService:
             Example format: ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
             """
             
-            response = self.client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a keyword expansion expert."},
-                    {"role": "user", "content": prompt}
-                ],
+            response = await self.provider.generate(
+                prompt=prompt,
+                system_prompt="You are a keyword expansion expert.",
                 temperature=0.7,
                 max_tokens=200
             )
             
-            content = response.choices[0].message.content.strip()
+            content = response.content
             
             # JSON 파싱 시도
             try:
+                # 코드 블록 제거
+                if '```json' in content:
+                    content = content.replace('```json', '').replace('```', '').strip()
+                
                 keywords = json.loads(content)
                 if isinstance(keywords, list):
                     return keywords[:5]  # 최대 5개
@@ -79,7 +106,7 @@ class LLMService:
             return []
             
         except Exception as e:
-            logger.error(f"OpenAI API error in expand_keywords: {str(e)}")
+            logger.error(f"LLM error in expand_keywords: {str(e)}")
             return []  # 실패해도 계속 진행
     
     async def generate_report(self, posts: List[Dict[str, Any]], query: str, length: ReportLength) -> Dict[str, Any]:
@@ -135,19 +162,17 @@ Important:
 - MUST include [ref:POST_ID] markers when referencing specific posts
 """
             
-            logger.info("🤖 OpenAI API 호출 시작...")
-            response = self.client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a professional community analyst who creates insightful reports in Korean."},
-                    {"role": "user", "content": prompt}
-                ],
+            logger.info(f"🤖 {self.provider.provider_name} API 호출 시작...")
+            
+            response = await self.provider.generate(
+                prompt=prompt,
+                system_prompt="You are a professional community analyst who creates insightful reports in Korean.",
                 temperature=0.7,
                 max_tokens=2000 if length == ReportLength.detailed else 1000
             )
             
-            full_report = response.choices[0].message.content.strip()
-            logger.info(f"✅ OpenAI API 응답 수신 - 보고서 길이: {len(full_report)} 문자")
+            full_report = response.content
+            logger.info(f"✅ {self.provider.provider_name} API 응답 수신 - 보고서 길이: {len(full_report)} 문자")
             
             # 각주 매핑 추출 (변환 전)
             footnote_mapping = self._extract_footnote_mapping(full_report, posts)
@@ -161,17 +186,14 @@ Important:
             logger.info("📝 요약 생성 시작...")
             summary_prompt = f"다음 한국어 보고서의 핵심 내용을 한국어로 2-3문장으로 요약해주세요:\n\n{processed_report[:1000]}"
             
-            summary_response = self.client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a summarization expert."},
-                    {"role": "user", "content": summary_prompt}
-                ],
+            summary_response = await self.provider.generate(
+                prompt=summary_prompt,
+                system_prompt="You are a summarization expert.",
                 temperature=0.5,
                 max_tokens=200
             )
             
-            summary = summary_response.choices[0].message.content.strip()
+            summary = summary_response.content
             logger.info(f"✅ 요약 생성 완료 - {len(summary)} 문자")
             
             logger.info(f"🎉 AI 보고서 생성 완료!")
@@ -186,7 +208,7 @@ Important:
             }
             
         except Exception as e:
-            logger.error(f"OpenAI API error in generate_report: {str(e)}")
+            logger.error(f"{self.provider.provider_name} API error in generate_report: {str(e)}")
             raise OpenAIAPIException(f"Failed to generate report: {str(e)}")
     
     def _format_posts_for_prompt(self, posts: List[Dict[str, Any]]) -> str:
@@ -289,3 +311,13 @@ POST_ID: {post['id']}
                 processed_report += f"[{item['footnote_number']}] {item['title']} - r/{item['subreddit']} (점수: {item['score']}, 댓글: {item['comments']})\n"
         
         return processed_report
+
+    async def _call_llm(self, prompt: str, temperature: float = 0.7) -> str:
+        """내부 헬퍼 메서드 - 기존 코드와의 호환성을 위해 유지"""
+        response = await self.provider.generate(
+            prompt=prompt,
+            system_prompt="You are a professional analyst and expert writer.",
+            temperature=temperature,
+            max_tokens=4000
+        )
+        return response.content
