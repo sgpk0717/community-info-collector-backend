@@ -602,7 +602,35 @@ CREATE TABLE public.report_links (
    result = completion.choices[0].message.content
    ```
 
-4. **보고서 각주 및 링크 기능**
+4. **Gemini API 호출 예시**
+   ```python
+   import requests
+   
+   API_KEY = 'YOUR_GOOGLE_API_KEY'
+   ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key=' + API_KEY
+   
+   def gemini_call(prompt, model_id):
+       headers = {"Content-Type": "application/json"}
+       data = {
+           "contents": [{"parts": [{"text": prompt}]}]
+       }
+       url = ENDPOINT.format(model_id=model_id)
+       response = requests.post(url, headers=headers, json=data)
+       return response.json()['candidates'][0]['content']['parts'][0]['text']
+   
+   # 예시 프롬프트
+   prompt = "애플 주가 최근 동향 요약해줘."
+   
+   # 2.5 Pro 호출
+   print("[Gemini 2.5 Pro 응답]")
+   print(gemini_call(prompt, 'gemini-2.5-pro-latest'))
+   
+   # 2.5 Flash 호출
+   print("[Gemini 2.5 Flash 응답]")
+   print(gemini_call(prompt, 'gemini-2.5-flash-latest'))
+   ```
+
+5. **보고서 각주 및 링크 기능**
    - 보고서 생성 시 원본 게시물 참조를 위한 각주 시스템 구현
    - 각주 형식: `[1]`, `[2]` 등 대괄호 숫자 형태
    - 구현 방식:

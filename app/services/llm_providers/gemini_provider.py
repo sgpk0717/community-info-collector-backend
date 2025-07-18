@@ -17,13 +17,13 @@ class GeminiProvider(BaseLLMProvider):
         
         Args:
             api_key: Gemini API 키 (없으면 환경변수에서 로드)
-            model: 사용할 모델명 (기본값: gemini-2.5-flash-latest)
+            model: 사용할 모델명 (기본값: gemini-2.5-pro-latest)
         """
         self.api_key = api_key or os.getenv('GEMINI_API_KEY')
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다.")
         
-        self.model = model or "gemini-2.0-flash-exp"
+        self.model = model or "gemini-2.5-pro-latest"
         self.base_url = "https://generativelanguage.googleapis.com/v1beta/models"
         logger.info(f"Gemini Provider 초기화 완료 - 모델: {self.model}")
     
