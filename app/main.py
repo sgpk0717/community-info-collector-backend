@@ -46,6 +46,45 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+# 요청 로깅 미들웨어
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+import time
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+        
+        # 요청 정보 로깅
+        logger.info(f"📥 요청 수신: {request.method} {request.url.path}")
+        logger.info(f"   Origin: {request.headers.get('origin', 'None')}")
+        logger.info(f"   Content-Type: {request.headers.get('content-type', 'None')}")
+        logger.info(f"   User-Agent: {request.headers.get('user-agent', 'None')[:50]}...")
+        
+        # OPTIONS 요청 처리 (CORS preflight)
+        if request.method == "OPTIONS":
+            logger.info("   ✅ OPTIONS 요청 (CORS preflight)")
+        
+        # 요청 본문 로깅 (POST 요청의 경우)
+        if request.method == "POST" and request.url.path.startswith("/api/v1/search"):
+            try:
+                body = await request.body()
+                request._body = body  # 요청 본문을 다시 읽을 수 있도록 저장
+                logger.info(f"   Body: {body.decode('utf-8')[:500]}")  # 처음 500자만
+            except Exception as e:
+                logger.error(f"   Body 읽기 실패: {str(e)}")
+        
+        response = await call_next(request)
+        
+        # 응답 정보 로깅
+        process_time = time.time() - start_time
+        logger.info(f"📤 응답 전송: {request.method} {request.url.path} - {response.status_code} ({process_time:.3f}초)")
+        
+        return response
+
+# 요청 로깅 미들웨어 추가
+app.add_middleware(RequestLoggingMiddleware)
+
 # CORS 설정
 app.add_middleware(
     CORSMiddleware,
