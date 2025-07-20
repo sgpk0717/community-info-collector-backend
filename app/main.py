@@ -82,10 +82,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         
         return response
 
-# 요청 로깅 미들웨어 추가
-app.add_middleware(RequestLoggingMiddleware)
-
-# CORS 설정
+# CORS 설정 (먼저 추가)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -93,6 +90,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 요청 로깅 미들웨어 추가 (나중에 추가 = 먼저 실행됨)
+app.add_middleware(RequestLoggingMiddleware)
 
 # API 라우터 등록
 app.include_router(api_router, prefix=settings.API_V1_STR)
