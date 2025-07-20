@@ -78,10 +78,10 @@ for handler in root_logger.handlers:
     if isinstance(handler, logging.StreamHandler) and not isinstance(handler, RotatingFileHandler):
         handler.setFormatter(ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 
-# uvicorn과 fastapi 로거도 DEBUG로 설정
-logging.getLogger("uvicorn").setLevel(logging.DEBUG)
-logging.getLogger("uvicorn.access").setLevel(logging.DEBUG)
-logging.getLogger("fastapi").setLevel(logging.DEBUG)
+# uvicorn과 fastapi 로거도 설정 (너무 많은 DEBUG 로그 방지)
+logging.getLogger("uvicorn").setLevel(logging.INFO)
+logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+logging.getLogger("fastapi").setLevel(logging.INFO)
 
 logger = logging.getLogger(__name__)
 

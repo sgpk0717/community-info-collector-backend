@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Community Info Collector API"
     APP_VERSION: str = "2.0.0"
     APP_ENV: str = "development"
-    LOG_LEVEL: str = "DEBUG"
+    LOG_LEVEL: str = "INFO"
     
     # API settings
     API_V1_STR: str = "/api/v1"
