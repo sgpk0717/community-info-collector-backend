@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
   Animated,
+  Easing,
   Modal,
   FlatList,
   Linking,
@@ -25,6 +26,8 @@ import LogViewer from './src/components/LogViewer';
 import DropdownMenu from './src/components/DropdownMenu';
 
 const API_BASE_URL = 'https://community-info-collector-backend.onrender.com';
+// const API_BASE_URL = 'http://localhost:8000'; // iOS 시뮬레이터용  
+// const API_BASE_URL = 'http://10.0.2.2:8000'; // Android 에뮬레이터용
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface Report {
@@ -49,7 +52,7 @@ interface ReportLink {
 }
 
 function App(): JSX.Element {
-  const [currentScreen, setCurrentScreen] = React.useState<'splash' | 'login' | 'register' | 'main' | 'reports'>('splash');
+  const [currentScreen, setCurrentScreen] = React.useState<'splash' | 'login' | 'register' | 'main' | 'reports' | 'error'>('splash');
   const [nickname, setNickname] = React.useState('');
   const [savedNickname, setSavedNickname] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
@@ -64,10 +67,15 @@ function App(): JSX.Element {
   const [reportLength, setReportLength] = React.useState<'simple' | 'moderate' | 'detailed'>('moderate');
   const [saveNickname, setSaveNickname] = React.useState(false);
   const [logViewerVisible, setLogViewerVisible] = React.useState(false);
+  const [serverError, setServerError] = React.useState<string>('');
+  const [apiStatus, setApiStatus] = React.useState<string | null>(null);
   
   // Splash animation
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
   const scaleAnim = React.useRef(new Animated.Value(0.8)).current;
+  
+  // API Status text scroll animation
+  const scrollAnim = React.useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
     // Splash screen animation
@@ -90,13 +98,109 @@ function App(): JSX.Element {
     // 앱 시작 로그
     logService.info('앱이 시작되었습니다');
 
-    // Show splash for 2 seconds
-    setTimeout(() => {
-      setCurrentScreen('login');
-      logService.info('로그인 화면으로 이동');
-    }, 2000);
+    // 서버 헬스체크 후 화면 전환
+    checkServerHealth();
   }, []);
 
+  // API Status 스크롤 애니메이션
+  React.useEffect(() => {
+    if (apiStatus && apiStatus.length > 40) { // 40자 이상일 때만 스크롤
+      scrollAnim.setValue(0);
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(1000), // 1초 대기
+          Animated.timing(scrollAnim, {
+            toValue: -SCREEN_WIDTH,
+            duration: 8000, // 8초에 걸쳐 스크롤
+            useNativeDriver: true,
+            easing: Easing.linear,
+          }),
+        ]),
+      ).start();
+    }
+  }, [apiStatus]);
+
+
+  const checkServerHealth = async () => {
+    const healthCheckUrl = `${API_BASE_URL}/`;
+    setApiStatus(`${healthCheckUrl} 헬스체크 중...`);
+    
+    logService.info('서버 헬스체크 시작...');
+    console.log('=== 헬스체크 시작 ===');
+    console.log('API URL:', API_BASE_URL);
+    console.log('헬스체크 URL:', healthCheckUrl);
+    
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10초로 늘림
+      
+      console.log('Fetch 요청 시작...');
+      const response = await fetch(healthCheckUrl, {
+        method: 'GET',
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+      
+      clearTimeout(timeoutId);
+      console.log('Fetch 응답 받음:', response.status, response.statusText);
+      
+      if (response.ok) {
+        const data = await response.json();
+        logService.info('서버 헬스체크 성공', data);
+        console.log('헬스체크 성공:', data);
+        
+        setApiStatus(`헬스체크 성공: ${data.status || 'OK'}`);
+        
+        // 2초 후 로그인 화면으로 이동
+        setTimeout(() => {
+          setApiStatus(null);
+          setCurrentScreen('login');
+          logService.info('로그인 화면으로 이동');
+        }, 2000);
+      } else {
+        throw new Error(`서버 응답 오류: ${response.status} ${response.statusText}`);
+      }
+    } catch (error: any) {
+      console.error('=== 헬스체크 오류 ===');
+      console.error('Error Type:', error?.name);
+      console.error('Error Message:', error?.message);
+      console.error('Error Code:', error?.code);
+      console.error('Error Stack:', error?.stack);
+      console.error('==================');
+      
+      logService.error('서버 헬스체크 실패', { 
+        error: error?.message,
+        errorType: error?.name,
+        errorCode: error?.code,
+        url: API_BASE_URL 
+      });
+      
+      let errorMessage = '서버에 연결할 수 없습니다.\n\n';
+      errorMessage += `URL: ${API_BASE_URL}\n`;
+      errorMessage += `오류: ${error?.message}\n`;
+      
+      if (error?.message?.includes('aborted')) {
+        errorMessage += '\n서버 응답 시간이 초과되었습니다.';
+        setApiStatus('헬스체크 실패: 시간 초과');
+      } else if (error?.message?.includes('Network request failed')) {
+        errorMessage += '\n네트워크 연결을 확인해주세요.';
+        setApiStatus('헬스체크 실패: 네트워크 오류');
+      } else if (error?.message?.includes('SSL')) {
+        errorMessage += '\nSSL 인증서 문제가 있을 수 있습니다.';
+        setApiStatus('헬스체크 실패: SSL 오류');
+      } else {
+        setApiStatus(`헬스체크 실패: ${error?.message}`);
+      }
+      
+      setServerError(errorMessage);
+      setCurrentScreen('error');
+      
+      // 3초 후 상태 메시지 제거
+      setTimeout(() => setApiStatus(null), 3000);
+    }
+  };
 
   const loadSavedNickname = async () => {
     try {
@@ -117,10 +221,13 @@ function App(): JSX.Element {
       return;
     }
 
+    const loginUrl = `${API_BASE_URL}/api/v1/users/login`;
+    setApiStatus(`${loginUrl} 로그인 요청 중...`);
+    
     setIsLoading(true);
     logService.info('로그인 시도', { nickname: nickname.trim() });
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/users/login`, {
+      const response = await fetch(loginUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -140,10 +247,20 @@ function App(): JSX.Element {
           await AsyncStorage.removeItem('savedNickname');
         }
         
+        // 로그인 성공 시 LogViewer에 기록
         logService.info('로그인 성공', { nickname: trimmedNickname });
+        logService.addLog(`로그인 성공: ${loginUrl}`, 'info');
+        logService.addLog(`사용자: ${trimmedNickname}`, 'info');
+        
+        setApiStatus('로그인 성공!');
+        setTimeout(() => setApiStatus(null), 1000);
+        
         setCurrentScreen('main');
       } else if (response.status === 404) {
         logService.warning('로그인 실패 - 등록되지 않은 닉네임', { nickname: nickname.trim() });
+        setApiStatus('로그인 실패: 등록되지 않은 닉네임');
+        setTimeout(() => setApiStatus(null), 2000);
+        
         Alert.alert(
           '로그인 실패', 
           '등록되지 않은 닉네임입니다.\n닉네임을 등록해주세요.',
@@ -154,6 +271,8 @@ function App(): JSX.Element {
         );
       } else {
         logService.error('로그인 실패', { status: response.status });
+        setApiStatus(`로그인 실패: ${response.status}`);
+        setTimeout(() => setApiStatus(null), 2000);
         Alert.alert('오류', '로그인에 실패했습니다. 다시 시도해주세요.');
       }
     } catch (error: any) {
@@ -175,21 +294,30 @@ function App(): JSX.Element {
       return;
     }
 
+    const checkUrl = `${API_BASE_URL}/api/v1/users/check-nickname?nickname=${encodeURIComponent(registerNickname.trim())}`;
+    setApiStatus(`${checkUrl} 닉네임 중복 확인 중...`);
+    
     setIsLoading(true);
     setNicknameError('');
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/users/check-nickname?nickname=${encodeURIComponent(registerNickname.trim())}`);
+      const response = await fetch(checkUrl);
       const data = await response.json();
 
       if (data.is_available) {
         setNicknameError('');
+        setApiStatus('닉네임 중복 확인: 사용 가능');
         Alert.alert('확인', '사용 가능한 닉네임입니다.');
       } else {
         setNicknameError('이미 사용 중인 닉네임입니다.');
+        setApiStatus('닉네임 중복 확인: 이미 사용 중');
       }
+      
+      setTimeout(() => setApiStatus(null), 2000);
     } catch (error) {
       setNicknameError('닉네임 확인 중 오류가 발생했습니다.');
+      setApiStatus('닉네임 확인 실패');
+      setTimeout(() => setApiStatus(null), 2000);
     } finally {
       setIsLoading(false);
     }
@@ -206,10 +334,13 @@ function App(): JSX.Element {
       return;
     }
 
+    const registerUrl = `${API_BASE_URL}/api/v1/users/register`;
+    setApiStatus(`${registerUrl} 회원가입 요청 중...`);
+    
     setIsLoading(true);
     logService.info('닉네임 등록 시도', { nickname: registerNickname.trim() });
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/users/register`, {
+      const response = await fetch(registerUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -218,7 +349,14 @@ function App(): JSX.Element {
       });
 
       if (response.ok) {
+        // 회원가입 성공 시 LogViewer에 기록
         logService.info('닉네임 등록 성공', { nickname: registerNickname.trim() });
+        logService.addLog(`회원가입 성공: ${registerUrl}`, 'info');
+        logService.addLog(`새 사용자: ${registerNickname.trim()}`, 'info');
+        
+        setApiStatus('회원가입 성공!');
+        setTimeout(() => setApiStatus(null), 1000);
+        
         Alert.alert(
           '등록 완료',
           '닉네임 등록이 완료되었습니다.',
@@ -237,10 +375,14 @@ function App(): JSX.Element {
       } else {
         const data = await response.json();
         logService.error('닉네임 등록 실패', { status: response.status, detail: data.detail });
+        setApiStatus(`회원가입 실패: ${data.detail || response.status}`);
+        setTimeout(() => setApiStatus(null), 3000);
         Alert.alert('오류', data.detail || '닉네임 등록에 실패했습니다.');
       }
-    } catch (error) {
+    } catch (error: any) {
       logService.error('닉네임 등록 오류', error);
+      setApiStatus(`회원가입 실패: ${error.message}`);
+      setTimeout(() => setApiStatus(null), 3000);
       Alert.alert('오류', '서버 연결에 실패했습니다.');
     } finally {
       setIsLoading(false);
@@ -308,6 +450,47 @@ function App(): JSX.Element {
     });
   };
 
+  // Error Screen
+  if (currentScreen === 'error') {
+    return (
+      <SafeAreaView style={[styles.container, styles.darkContainer]}>
+        <StatusBar barStyle="light-content" backgroundColor="#000000" />
+        {apiStatus && (
+          <View style={styles.apiStatusBar}>
+            <Animated.View 
+              style={[
+                styles.apiStatusTextContainer,
+                apiStatus.length > 40 ? {
+                  transform: [{ translateX: scrollAnim }]
+                } : {}
+              ]}
+            >
+              <Text style={styles.apiStatusText}>{apiStatus}</Text>
+              {apiStatus.length > 40 && (
+                <Text style={styles.apiStatusText}>    {apiStatus}</Text>
+              )}
+            </Animated.View>
+          </View>
+        )}
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorIcon}>⚠️</Text>
+          <Text style={styles.errorTitle}>서버 연결 실패</Text>
+          <Text style={styles.errorMessage}>{serverError}</Text>
+          
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              setCurrentScreen('splash');
+              setTimeout(() => checkServerHealth(), 500);
+            }}
+          >
+            <Text style={styles.retryButtonText}>다시 시도</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   // Splash Screen
   if (currentScreen === 'splash') {
     return (
@@ -339,8 +522,26 @@ function App(): JSX.Element {
   // Login Screen
   if (currentScreen === 'login') {
     return (
-      <SafeAreaView style={[styles.container, styles.darkContainer]}>
+      <View style={[styles.container, styles.darkContainer]}>
         <StatusBar barStyle="light-content" backgroundColor="#000000" />
+        {apiStatus && (
+          <View style={styles.apiStatusBar}>
+            <Animated.View 
+              style={[
+                styles.apiStatusTextContainer,
+                apiStatus.length > 40 ? {
+                  transform: [{ translateX: scrollAnim }]
+                } : {}
+              ]}
+            >
+              <Text style={styles.apiStatusText}>{apiStatus}</Text>
+              {apiStatus.length > 40 && (
+                <Text style={styles.apiStatusText}>    {apiStatus}</Text>
+              )}
+            </Animated.View>
+          </View>
+        )}
+        <SafeAreaView style={styles.safeAreaContent}>
         <KeyboardAvoidingView 
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.content}
@@ -397,7 +598,8 @@ function App(): JSX.Element {
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
-      </SafeAreaView>
+        </SafeAreaView>
+      </View>
     );
   }
 
@@ -406,6 +608,23 @@ function App(): JSX.Element {
     return (
       <SafeAreaView style={[styles.container, styles.darkContainer]}>
         <StatusBar barStyle="light-content" backgroundColor="#000000" />
+        {apiStatus && (
+          <View style={styles.apiStatusBar}>
+            <Animated.View 
+              style={[
+                styles.apiStatusTextContainer,
+                apiStatus.length > 40 ? {
+                  transform: [{ translateX: scrollAnim }]
+                } : {}
+              ]}
+            >
+              <Text style={styles.apiStatusText}>{apiStatus}</Text>
+              {apiStatus.length > 40 && (
+                <Text style={styles.apiStatusText}>    {apiStatus}</Text>
+              )}
+            </Animated.View>
+          </View>
+        )}
         <KeyboardAvoidingView 
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.content}
@@ -604,6 +823,11 @@ function App(): JSX.Element {
     
     const requestUrl = `${API_BASE_URL}/api/v1/search`;
     
+    // API 상태 표시
+    logService.addLog(`${requestUrl} 분석 요청 중...`, 'info');
+    logService.addLog(`키워드: ${keyword.trim()}`, 'info');
+    logService.addLog(`보고서 길이: ${reportLength}`, 'info');
+    
     logService.info('키워드 분석 시작', { 
       keyword: keyword.trim(), 
       length: reportLength,
@@ -613,6 +837,9 @@ function App(): JSX.Element {
     });
     
     try {
+      console.log('=== 실제 요청 URL ===');
+      console.log(requestUrl);
+      console.log('==================');
       logService.info('서버에 요청 전송 중...', { url: requestUrl });
       
       const response = await fetch(requestUrl, {
@@ -633,6 +860,7 @@ function App(): JSX.Element {
       if (response.ok) {
         const data = await response.json();
         logService.info('분석 요청 성공', { sessionId: data.session_id, responseData: data });
+        logService.addLog(`분석 요청 성공! 세션ID: ${data.session_id}`, 'success');
         
         // 분석 요청 완료 메시지 표시
         Alert.alert(
@@ -654,6 +882,7 @@ function App(): JSX.Element {
           statusText: response.statusText,
           errorText
         });
+        logService.addLog(`분석 요청 실패: ${response.status} ${response.statusText}`, 'error');
         Alert.alert('오류', `분석 요청에 실패했습니다. (상태: ${response.status})`);
       }
     } catch (error: any) {
@@ -834,6 +1063,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  apiStatusBar: {
+    height: 24,
+    backgroundColor: '#007AFF',
+    overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  apiStatusTextContainer: {
+    flexDirection: 'row',
+  },
+  apiStatusText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
+    paddingHorizontal: 16,
+    lineHeight: 24,
   },
   darkContainer: {
     backgroundColor: '#000000',
@@ -1554,6 +1799,40 @@ const styles = StyleSheet.create({
   modernEmptySubtext: {
     fontSize: 14,
     color: '#666',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 30,
+  },
+  errorIcon: {
+    fontSize: 60,
+    marginBottom: 20,
+  },
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 15,
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: '#CCCCCC',
+    textAlign: 'center',
+    marginBottom: 30,
+    lineHeight: 24,
+  },
+  retryButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 30,
+    paddingVertical: 15,
+    borderRadius: 25,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

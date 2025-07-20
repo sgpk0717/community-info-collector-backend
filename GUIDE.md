@@ -1,182 +1,23 @@
-# Community Info Collector v2.0 - 프로젝트 개발 가이드
+# Community Info Collector v2.0 프로젝트 분석 보고서
 
-## 프로젝트 개요
+## 개요
 
-이 프로젝트는 키워드 기반으로 소셜 미디어(Reddit 등)에서 커뮤니티 정보를 수집하고 AI를 활용해 분석 보고서를 생성하는 시스템입니다.
+이 문서는 Community Info Collector v2.0 프로젝트의 핵심 기능들을 상세히 분석한 기술 문서입니다. 새로운 프로젝트에 활용하실 수 있도록 샘플 코드와 함께 구체적이고 깊이 있는 내용을 담았습니다.
 
-- **백엔드**: Python (FastAPI)
-- **프론트엔드**: React Native
-- **배포 방식**: 로컬 APK 빌드 (소규모 사용자 대상)
+## 목차
 
-## 핵심 개발 전략: 점진적 APK 빌드
-
-### 왜 이 전략인가?
-이전 프로젝트에서 마지막에 한번에 빌드를 시도했다가 수많은 에러로 실패한 경험이 있습니다. 이번에는 **개발 초기부터 지속적으로 APK를 빌드**하면서 진행합니다.
-
-**핵심 아이디어**: "하나 뭐 할때마다 빌드하니까 에러안나잖아"
-
-### 실제 적용된 점진적 빌드 프로세스
-
-#### 1단계: 기본 프로젝트 세팅
-```bash
-# React Native 0.72.6 프로젝트 생성
-npx react-native@0.72.6 init CommunityInfoCollectorNew --version 0.72.6
-
-# 즉시 첫 빌드 테스트
-cd android && ./gradlew assembleRelease
-```
-✅ **결과**: 기본 React Native 앱 APK 성공적으로 생성
-
-#### 2단계: UI 기본 구조 구현
-```typescript
-// App.tsx 기본 UI 구현
-- 헤더 섹션 추가
-- 키워드 입력 필드 추가
-- 분석 버튼 추가
-- 안내 문구 섹션 추가
-```
-✅ **APK 빌드**: 성공 → UI 변경사항 즉시 확인 가능
-
-#### 3단계: API 연동 기능 구현
-```typescript
-// API 호출 로직 추가
-- fetch API 구현
-- 로딩 상태 관리
-- 에러 핸들링
-- 결과 표시 UI
-```
-✅ **APK 빌드**: 성공 → 백엔드 연동 테스트 준비 완료
-
-#### 4단계: UI 개선 (TextInput 가시성)
-```typescript
-// 사용자 피드백 반영
-- TextInput 글자 색상 수정
-- placeholder 색상 개선
-- 배경색 명시
-```
-✅ **APK 빌드**: 성공 → 사용자 경험 즉시 개선 확인
-
-#### 5단계: 앱 아이콘 적용
-```python
-# 트렌디한 아이콘 생성 및 적용
-- 다양한 해상도 아이콘 생성
-- Android 리소스 폴더에 적용
-```
-✅ **APK 빌드**: 성공 → 완성도 높은 앱 아이콘 적용
-
-### 점진적 빌드의 핵심 장점
-
-1. **에러 발생 최소화**: 작은 변경사항마다 빌드하므로 문제 발생 시 범위가 제한적
-2. **빠른 피드백**: 각 기능 구현 후 즉시 실제 디바이스에서 테스트 가능
-3. **롤백 용이성**: 문제 발생 시 이전 성공 단계로 쉽게 돌아갈 수 있음
-4. **개발 자신감**: 지속적인 성공 경험으로 개발 momentum 유지
-
-### 실무 교훈
-
-> "점진적 빌드란 건 APK 파일을 계속 생성해야 될 거 아냐. 계속 실패하는데 뭔 성공이란 거야"
-
-이 피드백을 통해 깨달은 것:
-- 빌드 "성공"과 "APK 파일 생성"은 다른 개념
-- 실제 디바이스에서 동작하는 APK 파일이 진짜 성공
-- 개발자의 만족보다 사용자가 실제로 사용할 수 있는 결과물이 중요
-
-### APK 빌드 체크포인트 (실제 적용)
-- [x] 초기 프로젝트 세팅 후 즉시 빌드
-- [x] 기본 UI 구현 후 빌드
-- [x] API 연동 기능 추가 후 빌드
-- [x] UI 개선 (TextInput) 후 빌드
-- [x] 앱 아이콘 적용 후 빌드
-- [ ] 네비게이션 구조 추가 후 빌드
-- [ ] 고급 기능 추가 후 빌드
-- [ ] 외부 라이브러리 추가 시마다 빌드
-
-### 다음 단계 빌드 예정
-- 사용자 인증 기능 추가 → APK 빌드
-- 보고서 목록 화면 구현 → APK 빌드
-- 스케줄링 기능 추가 → APK 빌드
-- 푸시 알림 기능 추가 → APK 빌드
-
-### React Native APK 빌드 명령어
-```bash
-# Android 디버그 APK 빌드
-cd android
-./gradlew assembleDebug
-
-# APK 위치
-# android/app/build/outputs/apk/debug/app-debug.apk
-
-# 릴리즈 APK 빌드 (서명 필요)
-./gradlew assembleRelease
-```
-
-## 개발자 역할 정의
-
-### 코드 철학
-당신은 10년차 시니어 개발자입니다. "Simple is better than complex"를 실천하며, **깨진 유리창 이론**을 아는 개발자입니다.
-
-**핵심 가치:**
-- **겉보기엔 쉬워 보이지만, 실제로는 깊은 고민이 담긴 코드**를 작성합니다
-- **주니어도 읽을 수 있지만, 시니어도 감탄하는 코드**를 지향합니다
-- **작은 더러움도 방치하지 않습니다** - 한 줄의 주석 처리된 코드도 용납하지 않습니다
-
-### 코드 작성 원칙
-
-1. **가독성과 깔끔함**
-   - 변수명은 의도가 명확하게
-   - 함수는 한 가지 일만 하도록
-   - 사용하지 않는 코드는 즉시 제거 (Git이 기억한다)
-
-2. **KISS (Keep It Simple, Stupid)**
-   ```typescript
-   // ❌ 과시하는 코드
-   const result = data?.reduce((acc,curr)=>({...acc,[curr.id]:curr}),{})??{}
-   
-   // ✅ 이해하기 쉬운 코드
-   const result: Record<string, Item> = {};
-   if (data) {
-     for (const item of data) {
-       result[item.id] = item;
-     }
-   }
-   ```
-
-3. **지속적인 코드 위생 관리**
-   - 기능 구현 → 즉시 정리 (나중은 없다)
-   - 실험적 코드는 커밋하지 않기
-   - TODO는 구체적인 날짜나 이슈 번호와 함께
-
-### 매 커밋 전 체크리스트
-- [ ] **⚠️ SyntaxError 검증 필수! - 푸시 전 반드시 Python 구문 검사**
-- [ ] 사용하지 않는 import 제거
-- [ ] console.log, 디버깅 코드 제거
-- [ ] 주석 처리된 코드 삭제
-- [ ] 임시 변수명 정리 (temp, test, aaa 등)
-- [ ] 중복 코드 제거
-- [ ] 불필요한 복잡도 제거
-
-### 개발 태도
-```typescript
-// 이런 질문을 항상 스스로에게 던집니다:
-// 1. "이 코드를 더 단순하게 만들 수 있을까?"
-// 2. "6개월 후의 내가 이해할 수 있을까?"
-// 3. "지금 당장 지울 수 있는 코드가 있나?"
-```
-
-**핵심 원칙**: 
-> "완벽한 코드란 더 이상 추가할 것이 없을 때가 아니라, 더 이상 제거할 것이 없을 때 완성된다." - Antoine de Saint-Exupéry
-
-**마인드셋**:
-> "코드는 정원과 같다. 매일 조금씩 가꾸지 않으면 잡초가 무성해진다."
+1. [키워드 기반 커뮤니티 분석 및 보고서 생성 기능](#1-키워드-기반-커뮤니티-분석-및-보고서-생성-기능)
+2. [스케줄링 기능](#2-스케줄링-기능)
+3. [데이터베이스 테이블 스키마](#3-데이터베이스-테이블-스키마-supabase-기준)
+4. [프론트엔드(React Native 앱) 로직](#4-프론트엔드react-native-앱-로직-상세-분석)
 
 ---
 
-## 프로젝트 핵심 기능 분석
-
-### 1. 키워드 기반 커뮤니티 분석 및 보고서 생성 기능
+## 1. 키워드 기반 커뮤니티 분석 및 보고서 생성 기능
 
 이 기능은 사용자가 입력한 키워드를 바탕으로 여러 소셜 미디어 플랫폼(현재는 주로 Reddit)에서 관련 게시물을 수집하고, LLM(거대 언어 모델)을 이용해 분석 보고서를 생성하는 핵심적인 역할을 합니다.
 
-#### 1.1. API 엔드포인트 및 파라미터
+### 1.1. API 엔드포인트 및 파라미터
 
 보고서 생성을 위한 메인 API 엔드포인트는 다음과 같습니다.
 
@@ -215,7 +56,7 @@ curl -X POST "http://127.0.0.1:8000/search" \
 }'
 ```
 
-#### 1.2. 기능 상세 분석
+### 1.2. 기능 상세 분석
 
 `search_and_analyze` 함수는 다음과 같은 순서로 동작합니다.
 
@@ -260,11 +101,13 @@ curl -X POST "http://127.0.0.1:8000/search" \
     *   `push_token`이 제공된 경우, `push_notification_service`를 통해 "분석이 완료되었습니다"라는 내용의 푸시 알림을 비동기적으로 발송합니다.
     *   최종적으로 생성된 보고서 데이터(`summary`, `full_report`)와 함께 `session_id`, `query_id` 등을 포함한 `SearchResponse` 객체를 클라이언트에 반환합니다.
 
-### 2. 스케줄링 기능
+---
+
+## 2. 스케줄링 기능
 
 이 프로젝트의 스케줄링 기능은 사용자가 지정한 키워드와 주기에 따라 자동으로 보고서 생성을 반복 실행하는 강력한 기능입니다. Supabase 데이터베이스와 `APScheduler` 라이브러리를 결합하여 안정적이고 확장성 있는 시스템을 구축했습니다.
 
-#### 2.1. 스케줄링 시스템 구조
+### 2.1. 스케줄링 시스템 구조
 
 스케줄링 기능은 크게 두 가지 서비스가 협력하여 동작합니다.
 
@@ -285,7 +128,7 @@ curl -X POST "http://127.0.0.1:8000/search" \
         *   **워커 (Worker)**: 별도의 비동기 태스크(`_schedule_worker`)가 큐를 계속 감시하다가, 새로운 스케줄이 들어오면 하나씩 꺼내어 실제 분석 작업을 수행하는 `_execute_schedule` 메소드를 호출합니다.
         *   **재시도 로직**: 스케줄 실행 중 일시적인 오류(네트워크 문제 등)가 발생하면, 최대 3회까지 5초 간격으로 재시도하여 안정성을 높입니다.
 
-#### 2.2. 스케줄링 기능의 전체 흐름
+### 2.2. 스케줄링 기능의 전체 흐름
 
 사용자가 스케줄 생성을 요청했을 때부터 보고서가 생성되기까지의 전체 흐름은 다음과 같습니다.
 
@@ -313,17 +156,19 @@ curl -X POST "http://127.0.0.1:8000/search" \
     *   만약 모든 횟수를 채웠다면(`completed_reports >= total_reports`), `status`를 'completed'로 변경하여 더 이상 실행되지 않도록 합니다.
     *   마지막으로, `release_schedule_lock`을 호출하여 `is_executing` 플래그를 `False`로 되돌려놓아 다음 스케줄링 주기에 다시 실행될 수 있도록 합니다.
 
-#### 2.3. 스케줄링 기능 호출 후 필요한 작업
+### 2.3. 스케줄링 기능 호출 후 필요한 작업
 
 *   **스케줄링 상태 확인**: 스케줄을 생성한 후, 프론트엔드에서는 주기적으로 `GET /api/v1/schedule/{user_nickname}`과 같은 API를 호출하여 현재 스케줄의 상태(`active`, `completed`, `cancelled`)와 진행 상황(`completed_reports`, `total_reports`)을 사용자에게 보여줄 수 있습니다.
 *   **보고서 확인**: 스케줄에 의해 생성된 보고서는 일반 보고서와 동일하게 `GET /reports/{user_nickname}` API를 통해 목록을 조회하고, `GET /reports/detail/{report_id}`를 통해 상세 내용을 확인할 수 있습니다.
 *   **알림 처리**: 스케줄 실행이 완료되면 (선택적으로) 푸시 알림이 발송될 수 있으므로, 클라이언트 앱은 이 알림을 수신하고 적절히 처리하는 로직이 필요합니다.
 
-### 3. 데이터베이스 테이블 스키마 (Supabase 기준)
+---
+
+## 3. 데이터베이스 테이블 스키마 (Supabase 기준)
 
 프로젝트의 핵심 데이터는 Supabase에 저장되며, 주요 테이블은 `users`, `schedules`, `reports`, `report_links` 입니다.
 
-#### 3.1. `users` 테이블
+### 3.1. `users` 테이블
 
 사용자 정보를 관리합니다.
 
@@ -349,7 +194,7 @@ CREATE TABLE public.users (
 );
 ```
 
-#### 3.2. `schedules` 테이블
+### 3.2. `schedules` 테이블
 
 자동 보고서 생성을 위한 스케줄 정보를 관리합니다.
 
@@ -393,7 +238,7 @@ CREATE TABLE public.schedules (
 );
 ```
 
-#### 3.3. `reports` 테이블
+### 3.3. `reports` 테이블
 
 생성된 분석 보고서를 저장합니다.
 
@@ -427,7 +272,7 @@ CREATE TABLE public.reports (
 );
 ```
 
-#### 3.4. `report_links` 테이블
+### 3.4. `report_links` 테이블
 
 보고서에 인용되거나 참조된 원본 게시물 링크 정보를 관리합니다. `reports` 테이블과 1:N 관계입니다.
 
@@ -467,11 +312,13 @@ CREATE TABLE public.report_links (
 );
 ```
 
-### 4. 프론트엔드(React Native 앱) 로직 상세 분석
+---
+
+## 4. 프론트엔드(React Native 앱) 로직 상세 분석
 
 `RedditAnalyzerApp`은 사용자가 직접 키워드 분석을 요청하고, 스케줄을 관리하며, 생성된 보고서를 확인할 수 있는 React Native 기반의 모바일 애플리케이션입니다.
 
-#### 4.1. 앱의 전체 구조 및 화면 흐름 (Flow)
+### 4.1. 앱의 전체 구조 및 화면 흐름 (Flow)
 
 앱의 핵심 구조는 `App.tsx` 파일에 정의되어 있으며, 사용자의 인증 상태(`isAuthenticated`)에 따라 다른 화면을 보여주는 조건부 렌더링 방식을 사용합니다.
 
@@ -512,7 +359,7 @@ CREATE TABLE public.report_links (
         *   **상세 보고서 보기**: 목록에서 특정 보고서를 선택하면, `Modal` 창이 열리고 `ReportRenderer` 컴포넌트를 통해 마크다운 형식의 전체 보고서 내용이 렌더링됩니다.
         *   **보고서 삭제**: 선택 모드를 활성화하여 여러 보고서를 한 번에 삭제할 수 있습니다.
 
-#### 4.2. 핵심 서비스 로직
+### 4.2. 핵심 서비스 로직
 
 앱의 비즈니스 로직과 서버 통신은 주로 `src/services/` 디렉토리의 서비스 파일들에서 처리됩니다.
 
@@ -530,137 +377,4 @@ CREATE TABLE public.report_links (
 
 ---
 
-## 추가 개발 시 참고사항
-
-### APK 빌드 시 자주 발생하는 문제와 해결법
-
-1. **Metro bundler 캐시 문제**
-   ```bash
-   npx react-native start --reset-cache
-   ```
-
-2. **Android Gradle 캐시 문제**
-   ```bash
-   cd android
-   ./gradlew clean
-   ```
-
-3. **node_modules 재설치**
-   ```bash
-   rm -rf node_modules
-   npm install
-   ```
-
-4. **Android 빌드 환경 확인**
-   - Android Studio 설치 확인
-   - Android SDK 설치 확인
-   - 환경변수 설정 확인 (ANDROID_HOME)
-
-### 점진적 개발 체크리스트
-
-- [ ] React Native 프로젝트 초기화
-- [ ] 첫 APK 빌드 성공
-- [ ] 기본 네비게이션 구조 추가
-- [ ] APK 빌드 확인
-- [ ] 로그인/회원가입 화면 구현
-- [ ] APK 빌드 확인
-- [ ] API 서비스 레이어 구현
-- [ ] APK 빌드 확인
-- [ ] 메인 기능 화면 구현
-- [ ] APK 빌드 확인
-- [ ] 푸시 알림 기능 추가
-- [ ] 최종 APK 빌드 및 테스트
-
-### ⚠️ 배포 전 필수 검증
-
-**SyntaxError는 절대 용납하지 않는다!**
-```bash
-# 푸시 전 반드시 실행
-python -m py_compile app/**/*.py
-```
-
-배포 중 SyntaxError는 서비스 전체를 마비시킨다. 아무리 급해도 구문 검사는 필수!
-
-### 중요 개발 원칙
-
-1. **절대 더미데이터/하드코딩 금지**
-   - 실패나 오류 발생 시 반드시 원인을 찾아 해결
-   - 더미데이터로 대충 넘어가지 않고, 실제 동작하도록 구현
-   - 오류가 완전히 해결될 때까지 계속 수정
-   - 테스트 키워드: "테슬라의 미래"로 실제 데이터가 올 때까지 반복 테스트
-
-2. **확장성 고려**
-   - 현재는 Reddit만 지원하지만 향후 Threads, X(Twitter) 등 추가 예정
-   - "레딧 분석기" 같은 특정 플랫폼 종속적인 용어 사용 금지
-   - "커뮤니티 정보 수집", "소셜 미디어 분석" 등 범용적인 용어 사용
-   - 서비스 구조도 플랫폼 추가가 쉽도록 설계
-
-3. **OpenAI API 호출 표준**
-   - 모든 LLM 호출은 반드시 아래 형식을 따를 것
-   - **중요: 모델명은 반드시 "o4-mini" 사용**
-   ```python
-   from openai import OpenAI
-   client = OpenAI()
-   
-   completion = client.chat.completions.create(
-       model="o4-mini",  # 반드시 o4-mini 사용
-       messages=[
-           {"role": "developer", "content": "You are a helpful assistant."},
-           {"role": "user", "content": "사용자 입력"}
-       ]
-   )
-   
-   result = completion.choices[0].message.content
-   ```
-
-4. **Gemini API 호출 예시**
-   ```python
-   import requests
-   
-   API_KEY = 'YOUR_GOOGLE_API_KEY'
-   ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key=' + API_KEY
-   
-   def gemini_call(prompt, model_id):
-       headers = {"Content-Type": "application/json"}
-       data = {
-           "contents": [{"parts": [{"text": prompt}]}]
-       }
-       url = ENDPOINT.format(model_id=model_id)
-       response = requests.post(url, headers=headers, json=data)
-       return response.json()['candidates'][0]['content']['parts'][0]['text']
-   
-   # 예시 프롬프트
-   prompt = "애플 주가 최근 동향 요약해줘."
-   
-   # 2.5 Pro 호출
-   print("[Gemini 2.5 Pro 응답]")
-   print(gemini_call(prompt, 'gemini-2.5-pro-latest'))
-   
-   # 2.5 Flash 호출
-   print("[Gemini 2.5 Flash 응답]")
-   print(gemini_call(prompt, 'gemini-2.5-flash-latest'))
-   ```
-
-5. **보고서 각주 및 링크 기능**
-   - 보고서 생성 시 원본 게시물 참조를 위한 각주 시스템 구현
-   - 각주 형식: `[1]`, `[2]` 등 대괄호 숫자 형태
-   - 구현 방식:
-     ```python
-     # 백엔드: 보고서 생성 시 각주 삽입
-     prompt = """
-     When referencing specific posts or opinions, add footnotes using [1], [2] format.
-     At the end, provide a "References" section mapping footnotes to post IDs.
-     """
-     
-     # 프론트엔드: 각주 클릭 처리
-     const handleFootnoteClick = (footnoteNumber) => {
-       const link = reportLinks.find(link => link.footnote_number === footnoteNumber);
-       if (link?.url) {
-         Linking.openURL(link.url);
-       }
-     };
-     ```
-   - DB 구조: `report_links` 테이블에 `footnote_number` 컬럼으로 매핑
-   - 렌더링: 각주를 터치 가능한 링크로 변환하여 원본 게시물로 이동
-
-이 문서를 참고하여 안정적이고 깔끔한 코드로 프로젝트를 완성하시기 바랍니다.
+이상으로 Community Info Collector v2.0 프로젝트의 핵심 기능, 스케줄링, 데이터베이스 스키마, 프론트엔드 앱 로직에 대한 상세 분석 보고서 작성을 마칩니다. 이 내용이 새로운 프로젝트를 구성하시는 데 큰 도움이 되기를 바랍니다. 추가적으로 궁금한 점이 있으시면 언제든지 질문해주세요!
