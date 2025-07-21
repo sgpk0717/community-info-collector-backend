@@ -73,39 +73,39 @@ class OpenAIProvider(BaseLLMProvider):
             try:
                 # 추론 모델 여부 확인
                 is_reasoning = self.is_reasoning_model()
-            
-            if is_reasoning:
-                logger.info(f"🤖 OpenAI 추론 모델 API 호출 시작 - 모델: {self.model}")
-                logger.info("   추론 모델이므로 model과 messages 파라미터만 사용합니다.")
                 
-                # 추론 모델은 model과 messages만 지원
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages
-                )
-            else:
-                logger.info(f"🤖 OpenAI API 호출 시작 - 모델: {self.model}, 온도: {temperature}")
+                if is_reasoning:
+                    logger.info(f"🤖 OpenAI 추론 모델 API 호출 시작 - 모델: {self.model}")
+                    logger.info("   추론 모델이므로 model과 messages 파라미터만 사용합니다.")
+                    
+                    # 추론 모델은 model과 messages만 지원
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages
+                    )
+                else:
+                    logger.info(f"🤖 OpenAI API 호출 시작 - 모델: {self.model}, 온도: {temperature}")
+                    
+                    # 일반 모델은 모든 파라미터 지원
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        **kwargs  # 추가 파라미터 (top_p, frequency_penalty 등)
+                    )
                 
-                # 일반 모델은 모든 파라미터 지원
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    **kwargs  # 추가 파라미터 (top_p, frequency_penalty 등)
-                )
-            
-            content = response.choices[0].message.content.strip()
-            
-            # 사용량 정보 추출
-            usage = None
-            if hasattr(response, 'usage'):
-                usage = {
-                    "prompt_tokens": response.usage.prompt_tokens,
-                    "completion_tokens": response.usage.completion_tokens,
-                    "total_tokens": response.usage.total_tokens
-                }
-            
+                content = response.choices[0].message.content.strip()
+                
+                # 사용량 정보 추출
+                usage = None
+                if hasattr(response, 'usage'):
+                    usage = {
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                        "total_tokens": response.usage.total_tokens
+                    }
+                
                 logger.info(f"✅ OpenAI API 응답 수신 - 길이: {len(content)} 문자")
                 if usage:
                     logger.info(f"   토큰 사용: {usage['total_tokens']} (프롬프트: {usage['prompt_tokens']}, 완성: {usage['completion_tokens']})")
