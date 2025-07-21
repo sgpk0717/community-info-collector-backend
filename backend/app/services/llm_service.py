@@ -5,6 +5,7 @@ from app.services.llm_providers import BaseLLMProvider, OpenAIProvider, GeminiPr
 import logging
 import json
 import os
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ LLMProviderType = Literal["openai", "gemini"]
 class LLMService:
     """다중 LLM Provider를 지원하는 통합 LLM Service"""
     
-    def __init__(self, provider_type: Optional[LLMProviderType] = None):
+    def __init__(self, provider_type: Optional[LLMProviderType] = None, api_semaphore: Optional[asyncio.Semaphore] = None):
         """
         LLMService 초기화
         
@@ -28,13 +29,14 @@ class LLMService:
             provider_type = os.getenv('LLM_PROVIDER', 'openai').lower()
         
         # Provider 초기화
+        self.api_semaphore = api_semaphore
         self.provider = self._initialize_provider(provider_type)
         logger.info(f"LLMService 초기화 완료 - Provider: {self.provider.provider_name}, Model: {self.provider.default_model}")
     
     def _initialize_provider(self, provider_type: str) -> BaseLLMProvider:
         """Provider 타입에 따라 적절한 provider 인스턴스 생성"""
         if provider_type == "openai":
-            return OpenAIProvider()
+            return OpenAIProvider(api_semaphore=self.api_semaphore)
         elif provider_type == "gemini":
             return GeminiProvider()
         else:
@@ -44,11 +46,22 @@ class LLMService:
         """한글 키워드를 영어로 번역"""
         logger.info(f"🌐 번역 시작: '{query}'")
         try:
-            prompt = f"""Translate the following Korean keyword to English. 
-            If it's already in English, return as is.
-            Only return the translated text, nothing else.
+            prompt = f"""Translate the following Korean search query to English for Reddit search.
+            
+            Rules:
+            1. If it's already in English, return as is
+            2. Translate company/brand names to their official English names
+            3. Keep the search intent clear and specific
+            4. Use common English terms that Reddit users would use
+            5. Only return the translated text, nothing else
+            
+            Examples:
+            - "구글 실적발표 예측" → "Google earnings prediction"
+            - "테슬라 자율주행 기술" → "Tesla autonomous driving technology"
+            - "삼성 신제품 루머" → "Samsung new product rumors"
             
             Keyword: {query}
+            Translation:
             """
             
             response = await self.provider.generate(
@@ -79,15 +92,34 @@ class LLMService:
             english_query = await self.translate_to_english(query)
             logger.info(f"   번역된 쿼리: '{english_query}'")
             
-            prompt = f"""Generate 5 related search keywords for: "{english_query}"
+            prompt = f"""Extract ALL effective search keywords for Reddit about: "{english_query}"
             
-            Requirements:
-            1. All keywords must be in English
-            2. Cover different aspects (technical, business, social, future trends)
-            3. Be specific and relevant to the original keyword
-            4. Return as JSON array only
+            SEARCH STRATEGY RULES:
+            1. Generate SHORT, HIGH-IMPACT keywords (1-3 words preferred)
+            2. Include multiple variations:
+               - Main topic alone (e.g., "Google")
+               - Topic + action words (e.g., "Google earnings", "GOOGL forecast")
+               - Stock symbols if applicable (e.g., "GOOGL", "GOOG")
+               - Common abbreviations and full names
+               - Singular AND plural forms
+               - Present AND future tense variations
+            3. Focus on HIGH-INTENT search patterns:
+               - Questions: "how", "what", "when" + topic
+               - Comparisons: "vs", "versus", "or"
+               - Opinions: "best", "worst", "review"
+               - Predictions: "forecast", "prediction", "outlook"
+            4. Include Reddit-specific terms:
+               - DD (Due Diligence)
+               - YOLO, calls, puts (for stock-related)
+               - ELI5 (Explain Like I'm 5)
+            5. Extract 10-20 keywords to maximize coverage
             
-            Example format: ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
+            Examples:
+            - For "Tesla earnings prediction": ["Tesla", "TSLA", "Tesla earnings", "TSLA earnings", "Tesla Q4", "Tesla forecast", "TSLA prediction", "Tesla revenue", "Tesla results", "Tesla call", "TSLA DD", "Tesla outlook", "when Tesla earnings", "TSLA vs", "Tesla profit"]
+            - For "Apple AI": ["Apple", "AAPL", "Apple AI", "Apple artificial intelligence", "Apple ML", "Apple GPT", "Apple Siri", "AAPL AI", "Apple vs Google AI", "Apple AI news", "when Apple AI", "Apple AI chip"]
+            
+            Generate comprehensive keywords for: "{english_query}"
+            Return as JSON array:
             """
             
             response = await self.provider.generate(
@@ -137,55 +169,103 @@ class LLMService:
             
             # 보고서 길이에 따른 프롬프트 조정
             length_guide = {
-                ReportLength.simple: "간단히 3-5 문장으로",
-                ReportLength.moderate: "적당히 상세하게 2-3 단락으로", 
-                ReportLength.detailed: "매우 상세하게 각 섹션별로"
+                ReportLength.simple: "각 섹션을 1-2 단락으로 간결하게",
+                ReportLength.moderate: "각 섹션을 2-3 단락으로 상세하게", 
+                ReportLength.detailed: "각 섹션을 3-5 단락으로 매우 상세하게, 구체적인 사례와 인용을 풍부하게 포함"
             }
             
             prompt = f"""You are a professional community analyst. The following are social media posts collected with the keyword '{query}'.
 
 {posts_text}
 
-Based on this English data, create a comprehensive analysis report in KOREAN following these guidelines:
+Based on this English data, create a HIGHLY DETAILED analysis report in KOREAN following these guidelines:
 
-Length: {length_guide[length]}
+Report Length: {length_guide[length]}
 
 Required sections (write all section headers and content in Korean):
 
-1. **핵심 요약**: Summarize the key findings
-2. **주요 토픽**: Categorize and explain main topics discussed
-3. **커뮤니티 반응**: Analyze positive/negative sentiment ratios with evidence
-4. **인상적인 의견**: Highlight 2-3 most notable opinions or insights
-5. **종합 분석**: Overall community perspective and trends
+## 1. 핵심 요약 (Executive Summary)
+- 전체 커뮤니티 반응의 핵심을 2-3 단락으로 상세히 요약
+- 가장 중요한 발견사항 3-5가지를 명확히 제시
+- 전반적인 여론 동향과 핵심 통계 포함
 
-**CRITICAL FOOTNOTE REQUIREMENTS:**
-- When referencing specific posts or opinions, you MUST use the exact format [ref:POST_ID] where POST_ID is the Reddit post ID from the data
-- Example: "많은 사용자들이 배터리 문제를 지적했습니다 [ref:t3_abc123]. 특히 한 사용자는 성능이 50% 저하되었다고 보고했습니다 [ref:t3_def456]."
-- Use [ref:POST_ID] markers for:
-  - Direct quotes from posts
-  - Specific statistics or claims
-  - Notable opinions or insights
-  - Any fact that comes from a specific post
-- You can use multiple references in one sentence: [ref:id1][ref:id2]
-- These markers will be converted to numbered footnotes later, so use them liberally
+## 2. 주요 토픽 분석 (Topic Analysis)
+- 논의되는 주요 주제를 5-7개 카테고리로 분류
+- 각 토픽별로 상세한 설명과 구체적인 예시 포함
+- 토픽별 논의 빈도와 중요도 분석
 
-DO NOT create a References section - the system will handle that automatically.
+## 3. 커뮤니티 반응 분석 (Sentiment Analysis)
+- 긍정/부정/중립 의견의 구체적인 비율 제시
+- 각 감정별 대표적인 의견들을 원문과 함께 인용
+- 감정 변화의 원인과 맥락 분석
 
-Important: 
-- The input data is in English, but write the ENTIRE report in Korean
-- Use markdown format
-- Maintain objective and balanced perspective
-- Translate key terms appropriately into Korean
-- MUST include [ref:POST_ID] markers when referencing specific posts
-"""
+## 4. 주목할 만한 의견들 (Notable Opinions)
+- 가장 많은 공감을 받은 의견 5-7개 상세 분석
+- **⚠️ 반드시 "영문 원문" (한국어 번역) 형식으로 인용**
+- 예시: "This is the future of AI" (이것이 AI의 미래입니다) [ref:123]
+- 해당 의견이 주목받는 이유와 맥락 설명
+
+## 5. 구체적인 사례와 인용 (Specific Examples)
+- 실제 사용자들의 생생한 경험담 5-10개 소개
+- **⚠️ 모든 인용은 반드시 형식 준수: "영문" (한글 번역) [ref:ID]**
+- 올바른 예: "I tried it yesterday and it worked perfectly" (어제 시도해봤는데 완벽하게 작동했어요) [ref:456]
+- 잘못된 예: "I tried it yesterday" [ref:456] ← 번역 누락 ❌
+
+## 6. 통계적 분석 (Statistical Analysis)
+- 게시물 작성 시간대 분포
+- 가장 활발한 논의가 이루어진 서브레딧
+- 평균 댓글 수, 추천 수 등 참여도 지표
+
+## 7. 종합 분석 및 인사이트 (Comprehensive Analysis)
+- 수집된 데이터에서 도출할 수 있는 심층적 인사이트
+- 향후 전망이나 예측 가능한 트렌드
+- 주목해야 할 시사점과 함의
+
+**CRITICAL REQUIREMENTS:**
+1. QUOTATION FORMAT: 
+   ⚠️ **모든 영문 인용은 반드시 한국어 번역을 포함해야 합니다!**
+   - 올바른 형식: "This is amazing!" (이것은 놀라워요!) [ref:POST_ID]
+   - 올바른 형식: "I can't believe this happened" (이런 일이 일어났다니 믿을 수 없어요) [ref:POST_ID]
+   - 잘못된 형식: "This is amazing!" [ref:POST_ID] ← 번역 없음 ❌
+   - 긴 인용문도 동일한 규칙 적용
+   - 블록 인용 사용 시에도 반드시 번역 포함
+
+2. DETAIL LEVEL: 
+   - Include SPECIFIC numbers, percentages, and statistics
+   - Provide CONCRETE examples with full context
+   - Use ACTUAL quotes from posts, not paraphrases
+   - Include post metadata (upvotes, comments, subreddit) when relevant
+
+3. FOOTNOTE REQUIREMENTS:
+   - Use [ref:POST_ID] for EVERY claim, quote, or specific example
+   - Multiple references allowed: [ref:id1][ref:id2]
+   - Place references immediately after the relevant content
+
+4. LANGUAGE:
+   - Write the ENTIRE report in Korean
+   - Keep English quotes in original form
+   - **⚠️ ALWAYS provide Korean translations in parentheses after EVERY English quote**
+   - 절대 번역 없이 영문만 인용하지 마세요!
+   - Use appropriate Korean business/analytical terminology
+
+5. MINIMUM CONTENT:
+   - At least 10-15 direct quotes from posts
+   - At least 20 [ref:POST_ID] citations throughout
+   - Each section must be substantial and detailed
+   - Total report should be comprehensive and thorough
+
+Remember: This is a DETAILED analytical report, not a summary. Include as much relevant information as possible while maintaining clarity and organization."""
             
+            # 프롬프트만 로깅 (데이터 제외)
+            prompt_preview = prompt.split('\n\n')[0] + "\n\n[게시물 데이터 생략...]\n\n" + "\n\n".join(prompt.split('\n\n')[2:])
             logger.info(f"🤖 {self.provider.provider_name} API 호출 시작...")
+            logger.info(f"📝 프롬프트:\n{prompt_preview}")
             
             response = await self.provider.generate(
                 prompt=prompt,
-                system_prompt="You are a professional community analyst who creates insightful reports in Korean.",
+                system_prompt="You are a professional community analyst who creates comprehensive, detailed reports in Korean. Focus on providing rich content with specific examples and direct quotations.",
                 temperature=0.7,
-                max_tokens=2000 if length == ReportLength.detailed else 1000
+                max_tokens=4000 if length == ReportLength.detailed else 2500 if length == ReportLength.moderate else 1500
             )
             
             full_report = response.content

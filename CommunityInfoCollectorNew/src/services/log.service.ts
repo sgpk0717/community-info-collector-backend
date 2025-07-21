@@ -1,7 +1,7 @@
 interface LogEntry {
   id: string;
   timestamp: Date;
-  level: 'info' | 'warning' | 'error';
+  level: 'debug' | 'info' | 'warning' | 'error';
   message: string;
   details?: any;
 }
@@ -10,6 +10,34 @@ class LogService {
   private logs: LogEntry[] = [];
   private maxLogs = 1000;
   private listeners: ((logs: LogEntry[]) => void)[] = [];
+  
+  constructor() {
+    this.setupGlobalErrorHandler();
+  }
+  
+  private setupGlobalErrorHandler() {
+    // React Native 전역 에러 핸들러 설정
+    if (typeof global !== 'undefined' && global.ErrorUtils) {
+      const originalHandler = global.ErrorUtils.getGlobalHandler();
+      global.ErrorUtils.setGlobalHandler((error: Error, isFatal?: boolean) => {
+        this.error('전역 에러 발생', {
+          message: error.message,
+          stack: error.stack,
+          isFatal: isFatal,
+          name: error.name
+        });
+        
+        // 원래 핸들러도 호출
+        if (originalHandler) {
+          originalHandler(error, isFatal);
+        }
+      });
+    }
+  }
+  
+  debug(message: string, details?: any) {
+    this.addLog('debug', message, details);
+  }
 
   info(message: string, details?: any) {
     this.addLog('info', message, details);
@@ -41,7 +69,9 @@ class LogService {
     this.notifyListeners();
 
     // 개발 환경에서는 console에도 출력
-    if (__DEV__) {
+    // @ts-ignore
+    const isDev = typeof __DEV__ !== 'undefined' && __DEV__;
+    if (isDev) {
       const consoleMethod = level === 'error' ? 'error' : level === 'warning' ? 'warn' : 'log';
       console[consoleMethod](`[${level.toUpperCase()}] ${message}`, details || '');
     }

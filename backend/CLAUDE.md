@@ -146,6 +146,7 @@ cd android
    - TODO는 구체적인 날짜나 이슈 번호와 함께
 
 ### 매 커밋 전 체크리스트
+- [ ] **⚠️ SyntaxError 검증 필수! - 푸시 전 반드시 Python 구문 검사**
 - [ ] 사용하지 않는 import 제거
 - [ ] console.log, 디버깅 코드 제거
 - [ ] 주석 처리된 코드 삭제
@@ -569,6 +570,16 @@ CREATE TABLE public.report_links (
 - [ ] APK 빌드 확인
 - [ ] 푸시 알림 기능 추가
 - [ ] 최종 APK 빌드 및 테스트
+
+### ⚠️ 배포 전 필수 검증
+
+**SyntaxError는 절대 용납하지 않는다!**
+```bash
+# 푸시 전 반드시 실행
+python -m py_compile app/**/*.py
+```
+
+배포 중 SyntaxError는 서비스 전체를 마비시킨다. 아무리 급해도 구문 검사는 필수!
 
 ### 중요 개발 원칙
 

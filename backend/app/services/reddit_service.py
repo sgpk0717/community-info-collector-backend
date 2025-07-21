@@ -3,9 +3,13 @@ from typing import List, Dict, Any, Optional
 from app.core.dependencies import get_reddit_client
 from app.core.exceptions import RedditAPIException
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
 import re
+from functools import partial
+from concurrent.futures import ThreadPoolExecutor
+from collections import deque
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +33,16 @@ NEGATIVE_EMOTION_WORDS = {
 }
 
 class RedditService:
-    def __init__(self):
+    def __init__(self, thread_pool: Optional[ThreadPoolExecutor] = None):
         self.client = get_reddit_client()
+        self.thread_pool = thread_pool
+        
+        # Rate Limit 관리를 위한 속성
+        self.request_timestamps = deque(maxlen=60)  # 최근 60개 요청 시간 저장
+        self.rate_limit_lock = asyncio.Lock()  # 동시성 제어
     
-    def _calculate_rumor_score(self, submission) -> float:
-        """루머 점수 계산 (0-10 범위)"""
+    def _calculate_rumor_score_sync(self, submission) -> float:
+        """루머 점수 계산 (0-10 범위) - 동기 버전"""
         score = 0.0
         score_breakdown = []
         
@@ -83,8 +92,8 @@ class RedditService:
         
         return final_score
     
-    def _extract_linguistic_flags(self, text: str) -> List[str]:
-        """언어학적 신호 플래그 추출"""
+    def _extract_linguistic_flags_sync(self, text: str) -> List[str]:
+        """언어학적 신호 플래그 추출 - 동기 버전"""
         flags = []
         text_lower = text.lower()
         
@@ -108,23 +117,79 @@ class RedditService:
             logger.debug(f"📢 비공식성 감지: 느낌표 {exclamation_count}개, 대문자 {len(caps_words)}개")
         
         return flags
+    
+    async def _process_submission_batch(self, submissions: List[Any]) -> List[Dict[str, Any]]:
+        """게시물 배치를 병렬로 처리"""
+        if not self.thread_pool:
+            # 스레드풀이 없으면 동기적으로 처리
+            return [self._process_submission_sync(sub) for sub in submissions]
         
-    async def search_posts(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """Reddit에서 키워드로 게시물 검색 - 다중 벡터 수집 전략"""
+        # 스레드풀에서 병렬 처리
+        loop = asyncio.get_event_loop()
+        tasks = [
+            loop.run_in_executor(self.thread_pool, self._process_submission_sync, sub)
+            for sub in submissions
+        ]
+        return await asyncio.gather(*tasks)
+    
+    def _process_submission_sync(self, submission) -> Dict[str, Any]:
+        """단일 게시물 처리 - 동기 버전"""
+        text_to_analyze = submission.title + ' ' + (submission.selftext or '')
+        
+        # CPU 집약적 작업들
+        rumor_score = self._calculate_rumor_score_sync(submission)
+        linguistic_flags = self._extract_linguistic_flags_sync(text_to_analyze)
+        
+        return {
+            'id': submission.id,
+            'title': submission.title,
+            'selftext': submission.selftext,
+            'score': submission.score,
+            'num_comments': submission.num_comments,
+            'created_utc': submission.created_utc,
+            'author': str(submission.author),
+            'subreddit': str(submission.subreddit),
+            'url': f"https://reddit.com{submission.permalink}",
+            'upvote_ratio': getattr(submission, 'upvote_ratio', 0.5),
+            'is_self': getattr(submission, 'is_self', True),
+            'collection_vector': getattr(submission, '_collection_vector', 'zeitgeist'),
+            'rumor_score': rumor_score,
+            'linguistic_flags': linguistic_flags
+        }
+        
+    async def search_posts(self, query: str, limit: int = 50, time_filter: str = 'all') -> List[Dict[str, Any]]:
+        """Reddit에서 키워드로 게시물 검색 - 다중 벡터 수집 전략
+        
+        Args:
+            query: 검색 키워드
+            limit: 최대 게시물 수
+            time_filter: 시간 필터 ('hour', 'day', 'week', 'month', 'year', 'all')
+        """
         try:
-            logger.info(f"🔍 Reddit 검색 시작: '{query}' (최대 {limit}개 게시물)")
-            posts = []
+            # Rate limit 체크
+            await self._check_rate_limit()
             
-            # Reddit API는 동기식이므로 asyncio의 run_in_executor 사용
+            logger.info(f"🔍 Reddit 검색 시작: '{query}' (최대 {limit}개 게시물, 기간: {time_filter})")
+            
+            # Reddit API 호출은 스레드풀에서 실행
             loop = asyncio.get_event_loop()
             
             def _search():
-                # 다중 벡터 수집 전략
-                vectors = [
-                    {'name': 'zeitgeist', 'sort': 'hot', 'time_filter': 'week', 'limit': limit//3},
-                    {'name': 'underground', 'sort': 'controversial', 'time_filter': 'month', 'limit': limit//3},
-                    {'name': 'vanguard', 'sort': 'new', 'time_filter': 'all', 'limit': limit//3}
-                ]
+                # 다중 벡터 수집 전략 (시간 필터 적용)
+                # 사용자 지정 time_filter가 있으면 모든 벡터에 적용
+                if time_filter != 'all':
+                    vectors = [
+                        {'name': 'zeitgeist', 'sort': 'hot', 'time_filter': time_filter, 'limit': limit//3},
+                        {'name': 'underground', 'sort': 'controversial', 'time_filter': time_filter, 'limit': limit//3},
+                        {'name': 'vanguard', 'sort': 'new', 'time_filter': time_filter, 'limit': limit//3}
+                    ]
+                else:
+                    # 기본 전략
+                    vectors = [
+                        {'name': 'zeitgeist', 'sort': 'hot', 'time_filter': 'week', 'limit': limit//3},
+                        {'name': 'underground', 'sort': 'controversial', 'time_filter': 'month', 'limit': limit//3},
+                        {'name': 'vanguard', 'sort': 'new', 'time_filter': 'all', 'limit': limit//3}
+                    ]
                 
                 logger.info(f"📊 다중 벡터 수집 전략 시작 - 총 {len(vectors)}개 벡터")
                 all_submissions = []
@@ -158,191 +223,160 @@ class RedditService:
                                 time_filter=vector['time_filter']
                             )
                         
-                        vector_count = 0
+                        # 벡터 정보를 각 submission에 추가
+                        vector_submissions = []
                         for submission in search_results:
-                            # 수집 벡터 정보 추가
                             submission._collection_vector = vector['name']
-                            all_submissions.append(submission)
-                            vector_count += 1
-                            
-                        logger.info(f"✅ 벡터 '{vector['name']}' 완료 - {vector_count}개 게시물 수집")
-                            
+                            vector_submissions.append(submission)
+                        
+                        all_submissions.extend(vector_submissions)
+                        logger.info(f"✅ 벡터 '{vector['name']}' 수집 완료: {len(vector_submissions)}개 게시물")
+                        
                     except Exception as e:
-                        logger.warning(f"⚠️ 벡터 '{vector['name']}' 검색 실패: {str(e)}")
+                        logger.error(f"❌ 벡터 '{vector['name']}' 검색 실패: {str(e)}")
                         continue
                 
-                logger.info(f"📝 게시물 분석 및 중복 제거 시작 - 총 {len(all_submissions)}개 게시물")
-                
-                # 중복 제거 및 포맷팅
-                seen_ids = set()
-                processed_count = 0
-                
-                for submission in all_submissions:
-                    if submission.id not in seen_ids:
-                        seen_ids.add(submission.id)
-                        
-                        # 루머 점수 계산
-                        rumor_score = self._calculate_rumor_score(submission)
-                        
-                        # 언어학적 플래그 추출
-                        text_to_analyze = submission.title + ' ' + (submission.selftext or '')
-                        linguistic_flags = self._extract_linguistic_flags(text_to_analyze)
-                        
-                        post_data = {
-                            'id': submission.id,
-                            'title': submission.title,
-                            'selftext': submission.selftext[:1000] if submission.selftext else '',
-                            'score': submission.score,
-                            'upvote_ratio': submission.upvote_ratio,
-                            'num_comments': submission.num_comments,
-                            'created_utc': datetime.fromtimestamp(submission.created_utc).isoformat(),
-                            'subreddit': submission.subreddit.display_name,
-                            'author': str(submission.author) if submission.author else '[deleted]',
-                            'url': f"https://reddit.com{submission.permalink}",
-                            'is_self': submission.is_self,
-                            # 새로 추가된 필드들
-                            'collection_vector': getattr(submission, '_collection_vector', 'unknown'),
-                            'rumor_score': round(rumor_score, 1),
-                            'linguistic_flags': linguistic_flags
-                        }
-                        
-                        posts.append(post_data)
-                        processed_count += 1
-                        
-                        # 진행상황 로그 (10개마다)
-                        if processed_count % 10 == 0:
-                            logger.info(f"⏳ 게시물 처리 중... ({processed_count}/{len(all_submissions)})")
-                        
-                        if len(posts) >= limit:
-                            break
-                
-                # 수집된 게시물 통계 로그
-                vector_stats = {}
-                for post in posts:
-                    vector = post['collection_vector']
-                    vector_stats[vector] = vector_stats.get(vector, 0) + 1
-                
-                logger.info(f"📊 벡터별 수집 통계: {vector_stats}")
-                
-                return posts
+                logger.info(f"📈 전체 벡터 수집 완료: 총 {len(all_submissions)}개 게시물")
+                return all_submissions
             
-            # 동기 함수를 비동기로 실행
-            posts = await loop.run_in_executor(None, _search)
+            # Reddit API 검색을 스레드풀에서 실행
+            if self.thread_pool:
+                all_submissions = await loop.run_in_executor(self.thread_pool, _search)
+            else:
+                all_submissions = await loop.run_in_executor(None, _search)
             
-            logger.info(f"🎉 Reddit 검색 완료 - 총 {len(posts)}개 게시물 수집")
+            # 게시물 처리를 병렬로 수행
+            posts = await self._process_submission_batch(all_submissions)
+            
+            logger.info(f"✅ Reddit 검색 완료 - 총 {len(posts)}개 게시물 수집")
             return posts
             
         except Exception as e:
-            logger.error(f"❌ Reddit API 오류: {str(e)}")
+            logger.error(f"Reddit search error: {str(e)}")
             raise RedditAPIException(f"Failed to search Reddit: {str(e)}")
     
-    async def get_post_comments(self, post_id: str, limit: int = 20) -> List[Dict[str, Any]]:
-        """특정 게시물의 댓글 가져오기 - 루머 점수 포함"""
+    async def get_subreddit_info(self, subreddit_name: str) -> Dict[str, Any]:
+        """특정 subreddit 정보 조회"""
         try:
-            logger.info(f"💬 댓글 가져오기 시작: {post_id} (최대 {limit}개)")
-            comments = []
-            
             loop = asyncio.get_event_loop()
             
-            def _get_comments():
-                submission = self.client.submission(id=post_id)
-                submission.comments.replace_more(limit=0)  # 'load more comments' 제거
-                
-                logger.info(f"🔄 댓글 분석 시작...")
-                
-                comment_list = []
-                processed_count = 0
-                
-                for comment in submission.comments.list()[:limit]:
-                    if hasattr(comment, 'body'):
-                        # 댓글 루머 점수 계산
-                        comment_rumor_score = self._calculate_comment_rumor_score(comment)
-                        
-                        # 언어학적 플래그 추출
-                        linguistic_flags = self._extract_linguistic_flags(comment.body)
-                        
-                        comment_data = {
-                            'id': comment.id,
-                            'body': comment.body[:500],  # 댓글 내용 제한
-                            'score': comment.score,
-                            'created_utc': datetime.fromtimestamp(comment.created_utc).isoformat(),
-                            'author': str(comment.author) if comment.author else '[deleted]',
-                            # 새로 추가된 필드들
-                            'is_controversial': getattr(comment, 'controversiality', 0) == 1,
-                            'rumor_score': round(comment_rumor_score, 1),
-                            'linguistic_flags': linguistic_flags
-                        }
-                        comment_list.append(comment_data)
-                        processed_count += 1
-                        
-                        # 높은 루머 점수 댓글 알림
-                        if comment_rumor_score >= 7.0:
-                            logger.warning(f"🚨 높은 루머 점수 댓글 발견 [{comment_rumor_score:.1f}/10]: {comment.body[:50]}...")
-                
-                logger.info(f"✅ 댓글 분석 완료 - {processed_count}개 댓글 처리")
-                return comment_list
+            def _get_info():
+                subreddit = self.client.subreddit(subreddit_name)
+                return {
+                    'name': subreddit.display_name,
+                    'title': subreddit.title,
+                    'subscribers': subreddit.subscribers,
+                    'description': subreddit.public_description,
+                    'created_utc': subreddit.created_utc,
+                    'url': f"https://reddit.com/r/{subreddit_name}"
+                }
             
-            comments = await loop.run_in_executor(None, _get_comments)
-            
-            logger.info(f"💬 댓글 가져오기 완료 - {len(comments)}개 댓글")
-            return comments
+            if self.thread_pool:
+                return await loop.run_in_executor(self.thread_pool, _get_info)
+            else:
+                return await loop.run_in_executor(None, _get_info)
             
         except Exception as e:
-            logger.error(f"❌ 댓글 가져오기 실패 {post_id}: {str(e)}")
-            return []
+            logger.error(f"Failed to get subreddit info: {str(e)}")
+            raise RedditAPIException(f"Failed to get subreddit info: {str(e)}")
+            
+    def _calculate_weighted_scores(self, posts: List[Dict[str, Any]], query_words: List[str]) -> List[Dict[str, Any]]:
+        """검색어 일치도 및 기타 요소를 기반으로 가중치 점수 계산"""
+        for post in posts:
+            relevance_score = 0
+            
+            # 1. 제목에서 키워드 일치 확인 (가중치 2.0)
+            title_lower = post['title'].lower()
+            for word in query_words:
+                if word.lower() in title_lower:
+                    relevance_score += 2.0
+            
+            # 2. 본문에서 키워드 일치 확인 (가중치 1.0)
+            if post.get('selftext'):
+                selftext_lower = post['selftext'].lower()
+                for word in query_words:
+                    if word.lower() in selftext_lower:
+                        relevance_score += 1.0
+            
+            # 3. Reddit 점수 정규화 (0-1 범위로, 가중치 0.5)
+            reddit_score = post['score']
+            normalized_reddit_score = min(reddit_score / 1000, 1.0) * 0.5
+            relevance_score += normalized_reddit_score
+            
+            # 4. 댓글 수 정규화 (0-1 범위로, 가중치 0.3) 
+            comments = post['num_comments']
+            normalized_comments = min(comments / 100, 1.0) * 0.3
+            relevance_score += normalized_comments
+            
+            # 5. 최신성 가중치 (24시간 이내면 보너스)
+            created_time = datetime.fromtimestamp(post['created_utc'])
+            hours_old = (datetime.now() - created_time).total_seconds() / 3600
+            if hours_old < 24:
+                relevance_score += 0.5
+            elif hours_old < 48:
+                relevance_score += 0.3
+            
+            post['weighted_score'] = relevance_score
+            
+        return posts
     
-    def _calculate_comment_rumor_score(self, comment) -> float:
-        """댓글 루머 점수 계산"""
-        score = 0.0
-        
-        # 1. 논란성 지표
-        if hasattr(comment, 'controversiality') and comment.controversiality == 1:
-            score += 3.0
-        
-        # 2. 언어학적 신호 탐지
-        text = comment.body.lower()
-        
-        # 추측성 단어 개수
-        speculation_count = sum(1 for word in SPECULATIVE_WORDS if word in text)
-        score += min(speculation_count * 1.5, 3.0)
-        
-        # 부정적 감정 단어 개수
-        negative_count = sum(1 for word in NEGATIVE_EMOTION_WORDS if word in text)
-        score += min(negative_count * 1.0, 2.0)
-        
-        # 3. 댓글 특성
-        if hasattr(comment, 'score') and comment.score < 0:
-            score += 1.0  # 부정적인 점수
-        
-        return min(score, 10.0)
+    async def _check_rate_limit(self):
+        """Rate limit 확인 및 대기 (Reddit API: 60 requests/minute)"""
+        async with self.rate_limit_lock:
+            now = datetime.now()
+            
+            # 1분 이내의 요청만 유지
+            while self.request_timestamps and (now - self.request_timestamps[0]) > timedelta(minutes=1):
+                self.request_timestamps.popleft()
+            
+            # 59개 이상의 요청이 있으면 대기
+            if len(self.request_timestamps) >= 59:
+                # 가장 오래된 요청으로부터 1분 후까지 대기
+                oldest_request = self.request_timestamps[0]
+                wait_time = (oldest_request + timedelta(minutes=1) - now).total_seconds()
+                
+                if wait_time > 0:
+                    logger.info(f"⏳ Reddit API Rate limit 도달. {wait_time:.1f}초 대기 중...")
+                    await asyncio.sleep(wait_time)
+            
+            # 현재 요청 시간 기록
+            self.request_timestamps.append(now)
     
     async def search_with_keywords(self, keywords: List[str], limit_per_keyword: int = 10) -> List[Dict[str, Any]]:
-        """여러 키워드로 검색 (확장된 키워드 사용)"""
-        logger.info(f"🔍 다중 키워드 검색 시작: {keywords} (키워드당 최대 {limit_per_keyword}개)")
-        
+        """여러 키워드로 검색하여 게시물 수집 (Rate Limit 준수)"""
         all_posts = []
-        seen_ids = set()
+        total_keywords = len(keywords)
+        
+        logger.info(f"🔍 다중 키워드 검색 시작: {total_keywords}개 키워드")
+        logger.info(f"   키워드 목록: {keywords[:5]}{'...' if len(keywords) > 5 else ''}")
         
         for i, keyword in enumerate(keywords):
             try:
-                logger.info(f"🎯 키워드 {i+1}/{len(keywords)} 검색: '{keyword}'")
-                posts = await self.search_posts(keyword, limit=limit_per_keyword)
+                # Rate limit 체크
+                await self._check_rate_limit()
                 
-                new_posts = 0
-                for post in posts:
-                    if post['id'] not in seen_ids:
-                        seen_ids.add(post['id'])
-                        all_posts.append(post)
-                        new_posts += 1
-                        
-                logger.info(f"✅ 키워드 '{keyword}' 완료 - {new_posts}개 새로운 게시물 추가")
-                        
+                # 진행 상황 로그
+                logger.info(f"🔎 [{i+1}/{total_keywords}] 키워드 '{keyword}' 검색 중...")
+                
+                # 실제 검색 수행 (각 키워드당 제한된 수만 수집)
+                posts = await self.search_posts(keyword, limit=limit_per_keyword)
+                all_posts.extend(posts)
+                
+                logger.info(f"✅ 키워드 '{keyword}' 검색 완료: {len(posts)}개 수집")
+                
+                # 진행률 표시
+                if (i + 1) % 5 == 0 or (i + 1) == total_keywords:
+                    logger.info(f"📊 진행률: {(i+1)/total_keywords*100:.1f}% 완료 ({i+1}/{total_keywords})")
+                
             except Exception as e:
                 logger.warning(f"⚠️ 키워드 '{keyword}' 검색 실패: {str(e)}")
+                
+                # Rate limit 에러인 경우 추가 대기
+                if "rate limit" in str(e).lower():
+                    logger.warning("🚨 Rate limit 에러 감지. 30초 추가 대기...")
+                    await asyncio.sleep(30)
+                
                 continue
         
-        # 점수 기준으로 정렬
-        all_posts.sort(key=lambda x: x['score'], reverse=True)
-        
-        logger.info(f"🎉 다중 키워드 검색 완료 - 총 {len(all_posts)}개 게시물 (중복 제거됨)")
+        logger.info(f"✅ 다중 키워드 검색 완료: 총 {len(all_posts)}개 게시물 수집")
         return all_posts

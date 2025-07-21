@@ -48,6 +48,11 @@ class DatabaseService:
             report_dict['id'] = str(uuid4())
             report_dict['created_at'] = datetime.now().isoformat()
             
+            # keywords_used가 있으면 JSON 문자열로 변환
+            if 'keywords_used' in report_dict and report_dict['keywords_used']:
+                import json
+                report_dict['keywords_used'] = json.dumps(report_dict['keywords_used'], ensure_ascii=False)
+            
             result = self.client.table('reports').insert(report_dict).execute()
             
             if result.data:
@@ -68,7 +73,23 @@ class DatabaseService:
                 .order('created_at', desc=True)\
                 .execute()
             
-            return result.data if result.data else []
+            # 각 보고서에 글자수 추가 및 keywords_used 파싱
+            reports = result.data if result.data else []
+            import json
+            for report in reports:
+                if report.get('full_report'):
+                    report['report_char_count'] = len(report['full_report'])
+                else:
+                    report['report_char_count'] = 0
+                
+                # keywords_used가 JSON 문자열이면 파싱
+                if report.get('keywords_used') and isinstance(report['keywords_used'], str):
+                    try:
+                        report['keywords_used'] = json.loads(report['keywords_used'])
+                    except:
+                        report['keywords_used'] = None
+            
+            return reports
             
         except Exception as e:
             logger.error(f"Database error in get_user_reports: {str(e)}")
@@ -106,15 +127,24 @@ class DatabaseService:
             # 각주 링크 데이터 준비
             links_data = []
             for link in footnote_mapping:
-                # created_utc를 Unix timestamp로 변환
+                # created_utc 처리 (Reddit API에서는 Unix timestamp로 들어옴)
                 created_utc_value = None
                 if link.get('created_utc'):
                     try:
-                        # ISO 문자열을 datetime으로 파싱 후 timestamp로 변환
-                        dt = datetime.fromisoformat(link['created_utc'].replace('Z', '+00:00'))
-                        created_utc_value = dt.timestamp()
-                    except:
-                        logger.warning(f"created_utc 변환 실패: {link['created_utc']}")
+                        created_utc = link['created_utc']
+                        # Unix timestamp(숫자)인 경우
+                        if isinstance(created_utc, (int, float)):
+                            # Unix timestamp를 ISO 문자열로 변환하여 저장
+                            dt = datetime.fromtimestamp(created_utc)
+                            created_utc_value = dt.isoformat()
+                        # ISO 문자열인 경우
+                        elif isinstance(created_utc, str):
+                            # 그대로 저장
+                            created_utc_value = created_utc
+                        else:
+                            logger.warning(f"지원하지 않는 created_utc 형식: {type(created_utc)} - {created_utc}")
+                    except Exception as e:
+                        logger.warning(f"created_utc 변환 실패: {link['created_utc']} - {str(e)}")
                 
                 link_data = {
                     'report_id': report_id,
@@ -123,7 +153,7 @@ class DatabaseService:
                     'title': link['title'],
                     'score': link['score'],
                     'comments': link['comments'],
-                    'created_utc': created_utc_value,  # Unix timestamp로 저장
+                    'created_utc': created_utc_value,  # ISO 문자열로 저장
                     'subreddit': link['subreddit'],
                     'author': link['author'],
                     'position_in_report': link['position_in_report'],

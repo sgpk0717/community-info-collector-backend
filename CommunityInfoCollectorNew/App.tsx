@@ -23,6 +23,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import ReportRenderer from './src/components/ReportRenderer';
 import { logService } from './src/services/log.service';
 import LogViewer from './src/components/LogViewer';
+import ServerLogViewer from './src/components/ServerLogViewer';
 import DropdownMenu from './src/components/DropdownMenu';
 
 const API_BASE_URL = 'https://community-info-collector-backend.onrender.com';
@@ -38,6 +39,13 @@ interface Report {
   created_at: string;
   posts_collected: number;
   report_length: string;
+  report_char_count?: number;
+  keywords_used?: Array<{
+    keyword: string;
+    translated_keyword?: string;
+    posts_found: number;
+    sample_titles: string[];
+  }>;
 }
 
 interface ReportLink {
@@ -66,7 +74,9 @@ function App(): JSX.Element {
   const [keyword, setKeyword] = React.useState('');
   const [reportLength, setReportLength] = React.useState<'simple' | 'moderate' | 'detailed'>('moderate');
   const [saveNickname, setSaveNickname] = React.useState(false);
+  const [timeFilter, setTimeFilter] = React.useState<string | null>(null);
   const [logViewerVisible, setLogViewerVisible] = React.useState(false);
+  const [serverLogViewerVisible, setServerLogViewerVisible] = React.useState(false);
   const [serverError, setServerError] = React.useState<string>('');
   const [apiStatus, setApiStatus] = React.useState<string | null>(null);
   
@@ -121,18 +131,25 @@ function App(): JSX.Element {
   }, [apiStatus]);
 
 
-  const checkServerHealth = async () => {
+  const checkServerHealth = async (retryCount = 0) => {
     const healthCheckUrl = `${API_BASE_URL}/`;
-    setApiStatus(`${healthCheckUrl} 헬스체크 중...`);
+    const maxRetries = 3;
     
-    logService.info('서버 헬스체크 시작...');
+    if (retryCount === 0) {
+      setApiStatus(`${healthCheckUrl} 헬스체크 중...`);
+    } else {
+      setApiStatus(`헬스체크 재시도 중... (${retryCount}/${maxRetries})`);
+    }
+    
+    logService.info('서버 헬스체크 시작...', { retry: retryCount });
     console.log('=== 헬스체크 시작 ===');
     console.log('API URL:', API_BASE_URL);
     console.log('헬스체크 URL:', healthCheckUrl);
+    console.log('재시도:', retryCount);
     
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10초로 늘림
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15초로 늘림
       
       console.log('Fetch 요청 시작...');
       const response = await fetch(healthCheckUrl, {
@@ -159,6 +176,13 @@ function App(): JSX.Element {
           setCurrentScreen('login');
           logService.info('로그인 화면으로 이동');
         }, 2000);
+      } else if (response.status === 502 && retryCount < maxRetries) {
+        // 502 오류시 재시도
+        logService.warning('502 Bad Gateway - 서버가 시작중입니다. 재시도합니다.');
+        setTimeout(() => {
+          checkServerHealth(retryCount + 1);
+        }, 3000); // 3초 후 재시도
+        return;
       } else {
         throw new Error(`서버 응답 오류: ${response.status} ${response.statusText}`);
       }
@@ -170,11 +194,23 @@ function App(): JSX.Element {
       console.error('Error Stack:', error?.stack);
       console.error('==================');
       
+      // 네트워크 오류시 재시도
+      if (retryCount < maxRetries && 
+          (error?.message?.includes('Network request failed') || 
+           error?.message?.includes('fetch failed'))) {
+        logService.warning('네트워크 오류 - 재시도합니다.');
+        setTimeout(() => {
+          checkServerHealth(retryCount + 1);
+        }, 3000);
+        return;
+      }
+      
       logService.error('서버 헬스체크 실패', { 
         error: error?.message,
         errorType: error?.name,
         errorCode: error?.code,
-        url: API_BASE_URL 
+        url: API_BASE_URL,
+        retryCount: retryCount
       });
       
       let errorMessage = '서버에 연결할 수 없습니다.\n\n';
@@ -192,6 +228,12 @@ function App(): JSX.Element {
         setApiStatus('헬스체크 실패: SSL 오류');
       } else {
         setApiStatus(`헬스체크 실패: ${error?.message}`);
+      }
+      
+      if (retryCount >= maxRetries) {
+        errorMessage += '\n\n여러 번 시도했지만 연결할 수 없습니다.';
+        errorMessage += '\n서버가 절전 모드일 수 있습니다.';
+        errorMessage += '\n잠시 후 다시 시도해주세요.';
       }
       
       setServerError(errorMessage);
@@ -427,11 +469,17 @@ function App(): JSX.Element {
       const response = await fetch(`${API_BASE_URL}/api/v1/reports/${report.id}/links`);
       if (response.ok) {
         const data = await response.json();
+        console.log('Fetched report links:', data.links);
         setReportLinks(data.links || []);
+        logService.info('보고서 링크 로드', { reportId: report.id, linkCount: data.links?.length || 0 });
+      } else {
+        console.error('Failed to fetch links:', response.status);
+        logService.error('보고서 링크 로드 실패', { status: response.status });
       }
       setReportModalVisible(true);
     } catch (error) {
       console.error('Error fetching report links:', error);
+      logService.error('보고서 링크 로드 오류', error);
       Alert.alert('오류', '보고서 상세 정보를 불러오는데 실패했습니다.');
     } finally {
       setIsLoading(false);
@@ -522,7 +570,7 @@ function App(): JSX.Element {
   // Login Screen
   if (currentScreen === 'login') {
     return (
-      <View style={[styles.container, styles.darkContainer]}>
+      <SafeAreaView style={[styles.container, styles.darkContainer]}>
         <StatusBar barStyle="light-content" backgroundColor="#000000" />
         {apiStatus && (
           <View style={styles.apiStatusBar}>
@@ -541,11 +589,11 @@ function App(): JSX.Element {
             </Animated.View>
           </View>
         )}
-        <SafeAreaView style={styles.safeAreaContent}>
         <KeyboardAvoidingView 
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.content}
+          style={styles.flex}
         >
+          <View style={styles.loginContainer}>
           <View style={styles.loginHeader}>
             <Text style={styles.loginLogo}>💎</Text>
             <Text style={styles.loginTitle}>Collector</Text>
@@ -597,9 +645,9 @@ function App(): JSX.Element {
               </Text>
             </TouchableOpacity>
           </View>
+          </View>
         </KeyboardAvoidingView>
-        </SafeAreaView>
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -754,9 +802,17 @@ function App(): JSX.Element {
                     <Text style={styles.modernIcon}>📅</Text>
                     <Text style={styles.modernDateText}>{formatDate(item.created_at)}</Text>
                   </View>
-                  <View style={styles.modernReportMeta}>
-                    <Text style={styles.modernIcon}>📊</Text>
-                    <Text style={styles.modernPostsCount}>{item.posts_collected}개 분석</Text>
+                  <View style={styles.modernReportMetaRight}>
+                    <View style={styles.modernReportMeta}>
+                      <Text style={styles.modernIcon}>📊</Text>
+                      <Text style={styles.modernPostsCount}>{item.posts_collected}개 분석</Text>
+                    </View>
+                    {item.report_char_count && (
+                      <View style={styles.modernReportMeta}>
+                        <Text style={styles.modernIcon}>📝</Text>
+                        <Text style={styles.modernCharCount}>{item.report_char_count.toLocaleString()}자</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
               </TouchableOpacity>
@@ -798,6 +854,7 @@ function App(): JSX.Element {
               <ReportRenderer
                 fullReport={selectedReport.full_report}
                 reportLinks={reportLinks}
+                keywords={selectedReport.keywords_used}
               />
             )}
           </SafeAreaView>
@@ -813,13 +870,18 @@ function App(): JSX.Element {
       return;
     }
     
-    const requestData = {
+    const requestData: any = {
       query: keyword.trim(),
       sources: ['reddit'],
       user_nickname: savedNickname,
       length: reportLength,
       schedule_yn: 'N'
     };
+    
+    // 시간 필터 추가
+    if (timeFilter) {
+      requestData.time_filter = timeFilter;
+    }
     
     const requestUrl = `${API_BASE_URL}/api/v1/search`;
     
@@ -933,11 +995,19 @@ function App(): JSX.Element {
             }
             items={[
               {
-                label: '로그 보기',
-                icon: '📋',
+                label: '앱 로그 보기',
+                icon: '📱',
                 onPress: () => {
-                  logService.info('로그 뷰어 열기');
+                  logService.info('앱 로그 뷰어 열기');
                   setLogViewerVisible(true);
+                }
+              },
+              {
+                label: '서버 로그 보기',
+                icon: '🖥️',
+                onPress: () => {
+                  logService.info('서버 로그 뷰어 열기');
+                  setServerLogViewerVisible(true);
                 }
               },
               {
@@ -1020,6 +1090,53 @@ function App(): JSX.Element {
               </TouchableOpacity>
             </View>
           </View>
+
+          <View style={styles.modernTimeSelector}>
+            <Text style={styles.modernLengthLabel}>분석 기간</Text>
+            <View style={styles.modernTimeButtons}>
+              <TouchableOpacity
+                style={[styles.modernTimeButton, timeFilter === '1h' && styles.modernTimeButtonActive]}
+                onPress={() => setTimeFilter(timeFilter === '1h' ? null : '1h')}
+              >
+                <Text style={[styles.modernTimeButtonText, timeFilter === '1h' && styles.modernTimeButtonTextActive]}>1시간</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modernTimeButton, timeFilter === '3h' && styles.modernTimeButtonActive]}
+                onPress={() => setTimeFilter(timeFilter === '3h' ? null : '3h')}
+              >
+                <Text style={[styles.modernTimeButtonText, timeFilter === '3h' && styles.modernTimeButtonTextActive]}>3시간</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modernTimeButton, timeFilter === '12h' && styles.modernTimeButtonActive]}
+                onPress={() => setTimeFilter(timeFilter === '12h' ? null : '12h')}
+              >
+                <Text style={[styles.modernTimeButtonText, timeFilter === '12h' && styles.modernTimeButtonTextActive]}>12시간</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.modernTimeButtons}>
+              <TouchableOpacity
+                style={[styles.modernTimeButton, timeFilter === '1d' && styles.modernTimeButtonActive]}
+                onPress={() => setTimeFilter(timeFilter === '1d' ? null : '1d')}
+              >
+                <Text style={[styles.modernTimeButtonText, timeFilter === '1d' && styles.modernTimeButtonTextActive]}>24시간</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modernTimeButton, timeFilter === '3d' && styles.modernTimeButtonActive]}
+                onPress={() => setTimeFilter(timeFilter === '3d' ? null : '3d')}
+              >
+                <Text style={[styles.modernTimeButtonText, timeFilter === '3d' && styles.modernTimeButtonTextActive]}>3일</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modernTimeButton, timeFilter === '1w' && styles.modernTimeButtonActive]}
+                onPress={() => setTimeFilter(timeFilter === '1w' ? null : '1w')}
+              >
+                <Text style={[styles.modernTimeButtonText, timeFilter === '1w' && styles.modernTimeButtonTextActive]}>1주일</Text>
+              </TouchableOpacity>
+            </View>
+            {timeFilter && (
+              <Text style={styles.modernTimeHelp}>선택 해제하려면 다시 누르세요</Text>
+            )}
+          </View>
           
           <TouchableOpacity
             style={[styles.modernAnalyzeButton, !keyword.trim() && styles.modernButtonDisabled]}
@@ -1055,6 +1172,11 @@ function App(): JSX.Element {
         visible={logViewerVisible}
         onClose={() => setLogViewerVisible(false)}
       />
+      
+      <ServerLogViewer
+        visible={serverLogViewerVisible}
+        onClose={() => setServerLogViewerVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -1063,6 +1185,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  flex: {
+    flex: 1,
   },
   apiStatusBar: {
     height: 24,
@@ -1425,6 +1550,11 @@ const styles = StyleSheet.create({
   },
   
   // Login Screen Styles
+  loginContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
   loginHeader: {
     alignItems: 'center',
     marginBottom: 48,
@@ -1780,6 +1910,50 @@ const styles = StyleSheet.create({
   modernPostsCount: {
     fontSize: 12,
     color: '#666',
+  },
+  modernCharCount: {
+    fontSize: 12,
+    color: '#666',
+  },
+  modernTimeSelector: {
+    marginBottom: 20,
+  },
+  modernTimeButtons: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  modernTimeButton: {
+    flex: 1,
+    paddingVertical: 8,
+    marginHorizontal: 2,
+    borderRadius: 6,
+    backgroundColor: '#000',
+    borderWidth: 1,
+    borderColor: '#333',
+    alignItems: 'center',
+  },
+  modernTimeButtonActive: {
+    backgroundColor: '#32CD32',
+    borderColor: '#32CD32',
+  },
+  modernTimeButtonText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
+  modernTimeButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  modernTimeHelp: {
+    fontSize: 11,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  modernReportMetaRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   modernEmptyContainer: {
     flex: 1,

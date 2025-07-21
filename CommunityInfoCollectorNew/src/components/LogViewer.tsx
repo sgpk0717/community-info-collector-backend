@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   TextInput,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { logService, LogEntry } from '../services/log.service';
 
@@ -21,6 +22,8 @@ const LogViewer: React.FC<LogViewerProps> = ({ visible, onClose }) => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [filter, setFilter] = useState<'all' | 'info' | 'warning' | 'error'>('all');
   const [searchText, setSearchText] = useState('');
+  const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
 
   useEffect(() => {
     setLogs(logService.getLogs());
@@ -60,13 +63,8 @@ const LogViewer: React.FC<LogViewerProps> = ({ visible, onClose }) => {
       <TouchableOpacity
         style={styles.logItem}
         onPress={() => {
-          if (item.details) {
-            Alert.alert(
-              '로그 상세',
-              `${item.message}\n\n${JSON.stringify(item.details, null, 2)}`,
-              [{ text: '확인' }]
-            );
-          }
+          setSelectedLog(item);
+          setDetailModalVisible(true);
         }}
       >
         <View style={styles.logHeader}>
@@ -91,12 +89,13 @@ const LogViewer: React.FC<LogViewerProps> = ({ visible, onClose }) => {
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <SafeAreaView style={styles.container}>
+    <>
+      <Modal
+        visible={visible}
+        animationType="slide"
+        onRequestClose={onClose}
+      >
+        <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.title}>로그 뷰어</Text>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -186,6 +185,63 @@ const LogViewer: React.FC<LogViewerProps> = ({ visible, onClose }) => {
         />
       </SafeAreaView>
     </Modal>
+
+    {/* 로그 상세 정보 모달 */}
+    <Modal
+      visible={detailModalVisible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setDetailModalVisible(false)}
+    >
+      <View style={styles.detailModalOverlay}>
+        <View style={styles.detailModalContent}>
+          <View style={styles.detailModalHeader}>
+            <Text style={styles.detailModalTitle}>로그 상세 정보</Text>
+            <TouchableOpacity
+              onPress={() => setDetailModalVisible(false)}
+              style={styles.detailCloseButton}
+            >
+              <Text style={styles.detailCloseButtonText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {selectedLog && (
+            <ScrollView style={styles.detailModalBody}>
+              <View style={styles.detailSection}>
+                <Text style={styles.detailLabel}>시간</Text>
+                <Text style={styles.detailValue}>
+                  {logService.formatLogDate(selectedLog.timestamp)} {logService.formatLogTime(selectedLog.timestamp)}
+                </Text>
+              </View>
+              
+              <View style={styles.detailSection}>
+                <Text style={styles.detailLabel}>레벨</Text>
+                <Text style={[styles.detailValue, { color: getLogColor(selectedLog.level) }]}>
+                  {selectedLog.level.toUpperCase()}
+                </Text>
+              </View>
+              
+              <View style={styles.detailSection}>
+                <Text style={styles.detailLabel}>메시지</Text>
+                <Text style={styles.detailValue}>{selectedLog.message}</Text>
+              </View>
+              
+              {selectedLog.details && (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>상세 정보</Text>
+                  <View style={styles.detailJsonContainer}>
+                    <Text style={styles.detailJson}>
+                      {JSON.stringify(selectedLog.details, null, 2)}
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </ScrollView>
+          )}
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 };
 
@@ -320,6 +376,69 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: '#666',
+  },
+  detailModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  detailModalContent: {
+    backgroundColor: '#1A1A1A',
+    borderRadius: 16,
+    width: '90%',
+    maxHeight: '80%',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  detailModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  detailModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  detailCloseButton: {
+    padding: 8,
+  },
+  detailCloseButtonText: {
+    fontSize: 24,
+    color: '#666',
+  },
+  detailModalBody: {
+    padding: 20,
+  },
+  detailSection: {
+    marginBottom: 20,
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  detailValue: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    lineHeight: 20,
+  },
+  detailJsonContainer: {
+    backgroundColor: '#000',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  detailJson: {
+    fontSize: 12,
+    color: '#4A90E2',
+    fontFamily: 'monospace',
   },
 });
 
