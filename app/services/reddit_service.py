@@ -3,11 +3,13 @@ from typing import List, Dict, Any, Optional
 from app.core.dependencies import get_reddit_client
 from app.core.exceptions import RedditAPIException
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
 import re
 from functools import partial
 from concurrent.futures import ThreadPoolExecutor
+from collections import deque
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,10 @@ class RedditService:
     def __init__(self, thread_pool: Optional[ThreadPoolExecutor] = None):
         self.client = get_reddit_client()
         self.thread_pool = thread_pool
+        
+        # Rate Limit 관리를 위한 속성
+        self.request_timestamps = deque(maxlen=60)  # 최근 60개 요청 시간 저장
+        self.rate_limit_lock = asyncio.Lock()  # 동시성 제어
     
     def _calculate_rumor_score_sync(self, submission) -> float:
         """루머 점수 계산 (0-10 범위) - 동기 버전"""
@@ -154,6 +160,9 @@ class RedditService:
     async def search_posts(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
         """Reddit에서 키워드로 게시물 검색 - 다중 벡터 수집 전략"""
         try:
+            # Rate limit 체크
+            await self._check_rate_limit()
+            
             logger.info(f"🔍 Reddit 검색 시작: '{query}' (최대 {limit}개 게시물)")
             
             # Reddit API 호출은 스레드풀에서 실행
@@ -295,3 +304,64 @@ class RedditService:
             post['weighted_score'] = relevance_score
             
         return posts
+    
+    async def _check_rate_limit(self):
+        """Rate limit 확인 및 대기 (Reddit API: 60 requests/minute)"""
+        async with self.rate_limit_lock:
+            now = datetime.now()
+            
+            # 1분 이내의 요청만 유지
+            while self.request_timestamps and (now - self.request_timestamps[0]) > timedelta(minutes=1):
+                self.request_timestamps.popleft()
+            
+            # 59개 이상의 요청이 있으면 대기
+            if len(self.request_timestamps) >= 59:
+                # 가장 오래된 요청으로부터 1분 후까지 대기
+                oldest_request = self.request_timestamps[0]
+                wait_time = (oldest_request + timedelta(minutes=1) - now).total_seconds()
+                
+                if wait_time > 0:
+                    logger.info(f"⏳ Reddit API Rate limit 도달. {wait_time:.1f}초 대기 중...")
+                    await asyncio.sleep(wait_time)
+            
+            # 현재 요청 시간 기록
+            self.request_timestamps.append(now)
+    
+    async def search_with_keywords(self, keywords: List[str], limit_per_keyword: int = 10) -> List[Dict[str, Any]]:
+        """여러 키워드로 검색하여 게시물 수집 (Rate Limit 준수)"""
+        all_posts = []
+        total_keywords = len(keywords)
+        
+        logger.info(f"🔍 다중 키워드 검색 시작: {total_keywords}개 키워드")
+        logger.info(f"   키워드 목록: {keywords[:5]}{'...' if len(keywords) > 5 else ''}")
+        
+        for i, keyword in enumerate(keywords):
+            try:
+                # Rate limit 체크
+                await self._check_rate_limit()
+                
+                # 진행 상황 로그
+                logger.info(f"🔎 [{i+1}/{total_keywords}] 키워드 '{keyword}' 검색 중...")
+                
+                # 실제 검색 수행 (각 키워드당 제한된 수만 수집)
+                posts = await self.search_posts(keyword, limit=limit_per_keyword)
+                all_posts.extend(posts)
+                
+                logger.info(f"✅ 키워드 '{keyword}' 검색 완료: {len(posts)}개 수집")
+                
+                # 진행률 표시
+                if (i + 1) % 5 == 0 or (i + 1) == total_keywords:
+                    logger.info(f"📊 진행률: {(i+1)/total_keywords*100:.1f}% 완료 ({i+1}/{total_keywords})")
+                
+            except Exception as e:
+                logger.warning(f"⚠️ 키워드 '{keyword}' 검색 실패: {str(e)}")
+                
+                # Rate limit 에러인 경우 추가 대기
+                if "rate limit" in str(e).lower():
+                    logger.warning("🚨 Rate limit 에러 감지. 30초 추가 대기...")
+                    await asyncio.sleep(30)
+                
+                continue
+        
+        logger.info(f"✅ 다중 키워드 검색 완료: 총 {len(all_posts)}개 게시물 수집")
+        return all_posts

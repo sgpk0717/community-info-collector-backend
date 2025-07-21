@@ -92,24 +92,34 @@ class LLMService:
             english_query = await self.translate_to_english(query)
             logger.info(f"   번역된 쿼리: '{english_query}'")
             
-            prompt = f"""Generate 5 highly specific search keywords for Reddit about: "{english_query}"
+            prompt = f"""Extract ALL effective search keywords for Reddit about: "{english_query}"
             
-            CRITICAL Requirements:
-            1. All keywords must be in English
-            2. Keywords must be DIRECTLY related to the main topic - no tangential concepts
-            3. Use variations that Reddit users would actually use:
-               - Add context words like "analysis", "discussion", "news", "update"
-               - Include relevant subreddit terminology
-               - Use common abbreviations or full names
-            4. Avoid overly broad terms that could match unrelated content
-            5. Return as JSON array only
+            SEARCH STRATEGY RULES:
+            1. Generate SHORT, HIGH-IMPACT keywords (1-3 words preferred)
+            2. Include multiple variations:
+               - Main topic alone (e.g., "Google")
+               - Topic + action words (e.g., "Google earnings", "GOOGL forecast")
+               - Stock symbols if applicable (e.g., "GOOGL", "GOOG")
+               - Common abbreviations and full names
+               - Singular AND plural forms
+               - Present AND future tense variations
+            3. Focus on HIGH-INTENT search patterns:
+               - Questions: "how", "what", "when" + topic
+               - Comparisons: "vs", "versus", "or"
+               - Opinions: "best", "worst", "review"
+               - Predictions: "forecast", "prediction", "outlook"
+            4. Include Reddit-specific terms:
+               - DD (Due Diligence)
+               - YOLO, calls, puts (for stock-related)
+               - ELI5 (Explain Like I'm 5)
+            5. Extract 10-20 keywords to maximize coverage
             
             Examples:
-            - For "Tesla earnings prediction": ["Tesla Q4 earnings forecast", "TSLA earnings call analysis", "Tesla revenue prediction 2024", "Tesla earnings whisper number", "Tesla quarterly results discussion"]
-            - For "Apple AI strategy": ["Apple artificial intelligence plans", "Apple AI chip development", "Apple machine learning strategy", "Apple vs Google AI competition", "Apple AI acquisitions news"]
+            - For "Tesla earnings prediction": ["Tesla", "TSLA", "Tesla earnings", "TSLA earnings", "Tesla Q4", "Tesla forecast", "TSLA prediction", "Tesla revenue", "Tesla results", "Tesla call", "TSLA DD", "Tesla outlook", "when Tesla earnings", "TSLA vs", "Tesla profit"]
+            - For "Apple AI": ["Apple", "AAPL", "Apple AI", "Apple artificial intelligence", "Apple ML", "Apple GPT", "Apple Siri", "AAPL AI", "Apple vs Google AI", "Apple AI news", "when Apple AI", "Apple AI chip"]
             
-            Now generate keywords for: "{english_query}"
-            JSON array:
+            Generate comprehensive keywords for: "{english_query}"
+            Return as JSON array:
             """
             
             response = await self.provider.generate(
