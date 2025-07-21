@@ -148,15 +148,15 @@ class DatabaseService:
                 
                 link_data = {
                     'report_id': report_id,
-                    'footnote_number': link['footnote_number'],
-                    'url': link['url'],
-                    'title': link['title'],
-                    'score': link['score'],
-                    'comments': link['comments'],
+                    'footnote_number': link.get('footnote_number'),
+                    'url': link.get('url', ''),
+                    'title': link.get('title', ''),
+                    'score': int(link.get('score', 0)) if link.get('score') is not None else 0,
+                    'comments': int(link.get('comments', 0)) if link.get('comments') is not None else 0,
                     'created_utc': created_utc_value,  # ISO 문자열로 저장
-                    'subreddit': link['subreddit'],
-                    'author': link['author'],
-                    'position_in_report': link['position_in_report'],
+                    'subreddit': link.get('subreddit', ''),
+                    'author': link.get('author', ''),
+                    'position_in_report': link.get('position_in_report'),
                     'created_at': datetime.now().isoformat()
                 }
                 links_data.append(link_data)
