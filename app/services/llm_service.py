@@ -201,13 +201,15 @@ Required sections (write all section headers and content in Korean):
 
 ## 4. 주목할 만한 의견들 (Notable Opinions)
 - 가장 많은 공감을 받은 의견 5-7개 상세 분석
-- 각 의견에 대해 원문 인용과 한국어 번역 제공
+- **⚠️ 반드시 "영문 원문" (한국어 번역) 형식으로 인용**
+- 예시: "This is the future of AI" (이것이 AI의 미래입니다) [ref:123]
 - 해당 의견이 주목받는 이유와 맥락 설명
 
 ## 5. 구체적인 사례와 인용 (Specific Examples)
 - 실제 사용자들의 생생한 경험담 5-10개 소개
-- 원문을 그대로 인용하고 한국어 번역 병기
-- 형식: "원문 내용" (한국어 번역) [ref:POST_ID]
+- **⚠️ 모든 인용은 반드시 형식 준수: "영문" (한글 번역) [ref:ID]**
+- 올바른 예: "I tried it yesterday and it worked perfectly" (어제 시도해봤는데 완벽하게 작동했어요) [ref:456]
+- 잘못된 예: "I tried it yesterday" [ref:456] ← 번역 누락 ❌
 
 ## 6. 통계적 분석 (Statistical Analysis)
 - 게시물 작성 시간대 분포
@@ -220,9 +222,13 @@ Required sections (write all section headers and content in Korean):
 - 주목해야 할 시사점과 함의
 
 **CRITICAL REQUIREMENTS:**
-1. QUOTATION FORMAT: Always use this format for quotes:
-   - English original: "This is the original text" (이것은 원문입니다) [ref:POST_ID]
-   - For long quotes, use blockquote format
+1. QUOTATION FORMAT: 
+   ⚠️ **모든 영문 인용은 반드시 한국어 번역을 포함해야 합니다!**
+   - 올바른 형식: "This is amazing!" (이것은 놀라워요!) [ref:POST_ID]
+   - 올바른 형식: "I can't believe this happened" (이런 일이 일어났다니 믿을 수 없어요) [ref:POST_ID]
+   - 잘못된 형식: "This is amazing!" [ref:POST_ID] ← 번역 없음 ❌
+   - 긴 인용문도 동일한 규칙 적용
+   - 블록 인용 사용 시에도 반드시 번역 포함
 
 2. DETAIL LEVEL: 
    - Include SPECIFIC numbers, percentages, and statistics
@@ -238,7 +244,8 @@ Required sections (write all section headers and content in Korean):
 4. LANGUAGE:
    - Write the ENTIRE report in Korean
    - Keep English quotes in original form
-   - Provide Korean translations in parentheses
+   - **⚠️ ALWAYS provide Korean translations in parentheses after EVERY English quote**
+   - 절대 번역 없이 영문만 인용하지 마세요!
    - Use appropriate Korean business/analytical terminology
 
 5. MINIMUM CONTENT:
