@@ -451,7 +451,9 @@ class RedditService:
                             })
                     return comments
                 except Exception as e:
-                    logger.warning(f"⚠️ 게시물 {post_id}의 댓글 수집 실패: {str(e)}")
+                    logger.error(f"❌ 게시물 {post_id}의 댓글 수집 실패: {str(e)}")
+                    # 댓글은 필수가 아니므로 오류 시 빈 리스트 반환은 허용
+                    # 이는 더미데이터가 아니라 실제로 댓글을 가져올 수 없는 상황을 반영
                     return []
             
             loop = asyncio.get_event_loop()

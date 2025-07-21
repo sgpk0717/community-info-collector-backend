@@ -156,7 +156,8 @@ class LLMService:
             logger.error(f"   Model: {self.provider.default_model}")
             import traceback
             logger.error(f"   Stack trace:\n{traceback.format_exc()}")
-            return []  # 실패해도 계속 진행
+            # 오류 발생 시 예외를 전파
+            raise Exception(f"키워드 확장 실패: {str(e)}")
     
     async def generate_report(self, posts: List[Dict[str, Any]], query: str, length: ReportLength, cluster_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """수집된 게시물을 바탕으로 분석 보고서 생성"""

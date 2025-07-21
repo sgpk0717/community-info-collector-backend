@@ -79,9 +79,8 @@ class RelevanceFilteringService:
                 
             except Exception as e:
                 logger.error(f"❌ 배치 {batch_idx + 1} 처리 중 오류: {str(e)}")
-                # 오류 발생 시 원본 콘텐츠를 그대로 포함 (안정성 우선)
-                all_filtered_content.extend(batch)
-                continue
+                # 오류 발생 시 예외를 다시 발생시켜 상위에서 처리하도록 함
+                raise Exception(f"관련성 필터링 실패 (배치 {batch_idx + 1}): {str(e)}")
         
         # 관련성 점수 기준으로 정렬
         all_filtered_content.sort(key=lambda x: x.get('relevance_score', 0), reverse=True)
@@ -182,11 +181,8 @@ JSON 형식으로 응답해주세요:
             
         except Exception as e:
             logger.error(f"❌ 관련성 점수 계산 실패: {str(e)}")
-            # 오류 시 기본 점수로 반환
-            return [
-                {**item, 'relevance_score': 5.0, 'relevance_reason': 'LLM 평가 실패'}
-                for item in content_batch
-            ]
+            # 오류 발생 시 예외를 전파하여 상위에서 처리
+            raise Exception(f"LLM 관련성 평가 실패: {str(e)}")
     
     def _parse_relevance_scores(self, llm_response: str) -> List[Dict[str, Any]]:
         """LLM 응답에서 관련성 점수 파싱"""

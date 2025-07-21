@@ -130,14 +130,8 @@ JSON 형식으로 응답:
             
         except Exception as e:
             logger.error(f"❌ 주제 추출 실패: {str(e)}")
-            # 폴백: 기본 주제 반환
-            return [
-                {"name": "주요 논의", "description": "가장 활발히 논의되는 주제", "keywords": []},
-                {"name": "찬반 의견", "description": "긍정적/부정적 의견", "keywords": []},
-                {"name": "기술적 분석", "description": "기술적이고 전문적인 내용", "keywords": []},
-                {"name": "개인 경험", "description": "개인적인 경험과 사례", "keywords": []},
-                {"name": "기타", "description": "기타 관련 내용", "keywords": []}
-            ]
+            # 오류 발생 시 예외를 전파
+            raise Exception(f"LLM 주제 추출 실패: {str(e)}")
     
     async def _assign_content_to_topics(
         self, 
@@ -226,8 +220,8 @@ JSON 배열로 응답 (콘텐츠 순서대로):
             
         except Exception as e:
             logger.error(f"❌ 주제 할당 실패: {str(e)}")
-            # 폴백: 모든 콘텐츠를 첫 번째 주제에 할당
-            return [0] * len(batch)
+            # 오류 발생 시 예외를 전파
+            raise Exception(f"LLM 주제 할당 실패 (배치): {str(e)}")
     
     def _optimize_clusters(self, clusters: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """작은 클러스터 병합 및 최적화"""
