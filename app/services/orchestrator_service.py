@@ -124,13 +124,14 @@ class OrchestratorService:
                 progress = 20 + (idx / len(keywords[:10])) * 15
                 await progress_callback(f"'{keyword}' 수집 중", int(progress))
             
-            posts_data = await self.reddit_service.collect_posts_with_comments(
-                query=keyword,
-                limit=15  # 키워드당 15개
+            # collect_posts_with_comments는 리스트를 반환함
+            content_items = await self.reddit_service.collect_posts_with_comments(
+                keywords=[keyword],  # keywords 파라미터로 변경
+                posts_limit=15  # posts_limit 파라미터명으로 변경
             )
             
             # 수집된 콘텐츠에 메타데이터 추가
-            for item in posts_data['posts'] + posts_data['comments']:
+            for item in content_items:
                 item['keyword_source'] = keyword
                 all_content.append(item)
         
