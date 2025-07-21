@@ -187,3 +187,23 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Database error in get_report_links: {str(e)}")
             raise SupabaseException(f"Failed to get report links: {str(e)}")
+    
+    async def delete_reports(self, report_ids: List[str]) -> int:
+        """보고서 일괄 삭제"""
+        try:
+            if not report_ids:
+                return 0
+            
+            deleted_count = 0
+            for report_id in report_ids:
+                # report_links는 CASCADE 삭제되므로 reports만 삭제
+                result = self.client.table('reports').delete().eq('id', report_id).execute()
+                if result.data:
+                    deleted_count += 1
+                    logger.info(f"🗑️ 보고서 삭제: {report_id}")
+            
+            return deleted_count
+            
+        except Exception as e:
+            logger.error(f"Database error in delete_reports: {str(e)}")
+            raise SupabaseException(f"Failed to delete reports: {str(e)}")
