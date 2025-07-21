@@ -223,7 +223,7 @@ class OrchestratorService:
         
         # LLM 호출로 보고서 생성
         try:
-            response = await self.llm_service._call_api(
+            response = await self.llm_service._call_llm(
                 structured_prompt,
                 temperature=0.3  # 일관성을 위해 낮은 temperature
             )
@@ -499,7 +499,7 @@ class OrchestratorService:
 위 섹션들을 추가하여 완성도 높은 보고서를 만들어주세요."""
         
         try:
-            improved_response = await self.llm_service._call_api(improvement_prompt, temperature=0.3)
+            improved_response = await self.llm_service._call_llm(improvement_prompt, temperature=0.3)
             improved_sections = self._parse_report_sections(improved_response)
             
             # 기존 섹션과 병합
