@@ -46,11 +46,22 @@ class LLMService:
         """한글 키워드를 영어로 번역"""
         logger.info(f"🌐 번역 시작: '{query}'")
         try:
-            prompt = f"""Translate the following Korean keyword to English. 
-            If it's already in English, return as is.
-            Only return the translated text, nothing else.
+            prompt = f"""Translate the following Korean search query to English for Reddit search.
+            
+            Rules:
+            1. If it's already in English, return as is
+            2. Translate company/brand names to their official English names
+            3. Keep the search intent clear and specific
+            4. Use common English terms that Reddit users would use
+            5. Only return the translated text, nothing else
+            
+            Examples:
+            - "구글 실적발표 예측" → "Google earnings prediction"
+            - "테슬라 자율주행 기술" → "Tesla autonomous driving technology"
+            - "삼성 신제품 루머" → "Samsung new product rumors"
             
             Keyword: {query}
+            Translation:
             """
             
             response = await self.provider.generate(
@@ -81,15 +92,24 @@ class LLMService:
             english_query = await self.translate_to_english(query)
             logger.info(f"   번역된 쿼리: '{english_query}'")
             
-            prompt = f"""Generate 5 related search keywords for: "{english_query}"
+            prompt = f"""Generate 5 highly specific search keywords for Reddit about: "{english_query}"
             
-            Requirements:
+            CRITICAL Requirements:
             1. All keywords must be in English
-            2. Cover different aspects (technical, business, social, future trends)
-            3. Be specific and relevant to the original keyword
-            4. Return as JSON array only
+            2. Keywords must be DIRECTLY related to the main topic - no tangential concepts
+            3. Use variations that Reddit users would actually use:
+               - Add context words like "analysis", "discussion", "news", "update"
+               - Include relevant subreddit terminology
+               - Use common abbreviations or full names
+            4. Avoid overly broad terms that could match unrelated content
+            5. Return as JSON array only
             
-            Example format: ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
+            Examples:
+            - For "Tesla earnings prediction": ["Tesla Q4 earnings forecast", "TSLA earnings call analysis", "Tesla revenue prediction 2024", "Tesla earnings whisper number", "Tesla quarterly results discussion"]
+            - For "Apple AI strategy": ["Apple artificial intelligence plans", "Apple AI chip development", "Apple machine learning strategy", "Apple vs Google AI competition", "Apple AI acquisitions news"]
+            
+            Now generate keywords for: "{english_query}"
+            JSON array:
             """
             
             response = await self.provider.generate(
