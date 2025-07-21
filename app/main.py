@@ -22,20 +22,42 @@ class ColoredFormatter(logging.Formatter):
         record.levelname = f"{log_color}{record.levelname}{self.RESET}"
         return super().format(record)
 
+# 로그 디렉토리 생성
+import os
+LOG_DIR = "logs"
+if not os.path.exists(LOG_DIR):
+    os.makedirs(LOG_DIR)
+
+# 로깅 설정
+from logging.handlers import RotatingFileHandler
+import datetime
+
+# 파일 핸들러 생성 (10MB 크기 제한, 5개 백업 파일)
+log_filename = os.path.join(LOG_DIR, f"app_{datetime.datetime.now().strftime('%Y%m%d')}.log")
+file_handler = RotatingFileHandler(
+    log_filename,
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5,
+    encoding='utf-8'
+)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
 # 로깅 설정
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler(sys.stdout)  # 명시적으로 stdout 지정
+        logging.StreamHandler(sys.stdout),  # 콘솔 출력
+        file_handler  # 파일 출력
     ],
     force=True  # 기존 로거 설정 덮어쓰기
 )
 
-# 루트 로거에 컬러 포맷터 적용
+# 루트 로거에 컬러 포맷터 적용 (콘솔 핸들러만)
 root_logger = logging.getLogger()
 for handler in root_logger.handlers:
-    handler.setFormatter(ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    if isinstance(handler, logging.StreamHandler) and not isinstance(handler, RotatingFileHandler):
+        handler.setFormatter(ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 
 logger = logging.getLogger(__name__)
 
