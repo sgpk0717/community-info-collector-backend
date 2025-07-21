@@ -380,3 +380,89 @@ class RedditService:
         
         logger.info(f"✅ 다중 키워드 검색 완료: 총 {len(all_posts)}개 게시물 수집")
         return all_posts
+    
+    async def collect_posts_with_comments(self, keywords: List[str], max_comments_per_post: int = 10, posts_limit: int = 20) -> List[Dict[str, Any]]:
+        """게시물과 댓글을 함께 수집"""
+        logger.info(f"📄 게시물+댓글 수집 시작 - 키워드: {len(keywords)}개, 게시물당 댓글: {max_comments_per_post}개")
+        
+        all_content = []
+        
+        for keyword in keywords:
+            try:
+                await self._check_rate_limit()
+                
+                # 게시물 수집
+                posts = await self.search_posts(keyword, limit=posts_limit)
+                logger.info(f"🔍 키워드 '{keyword}': {len(posts)}개 게시물 수집")
+                
+                for post in posts:
+                    # 게시물 정보 추가
+                    content_item = {
+                        'type': 'post',
+                        'id': post['id'],
+                        'title': post['title'],
+                        'content': post['selftext'],
+                        'score': post['score'],
+                        'created_utc': post['created_utc'],
+                        'subreddit': post['subreddit'],
+                        'author': post['author'],
+                        'url': post['url'],
+                        'num_comments': post['num_comments'],
+                        'keyword_source': keyword
+                    }
+                    all_content.append(content_item)
+                    
+                    # 댓글 수집
+                    if post['num_comments'] > 0:  # 댓글이 있는 경우만
+                        comments = await self._collect_comments(post['id'], max_comments_per_post)
+                        all_content.extend(comments)
+                    
+            except Exception as e:
+                logger.error(f"❌ 키워드 '{keyword}' 처리 중 오류: {str(e)}")
+                continue
+        
+        logger.info(f"✅ 전체 컨텐츠 수집 완료 - 총 {len(all_content)}개 (게시물+댓글)")
+        return all_content
+    
+    async def _collect_comments(self, post_id: str, max_comments: int) -> List[Dict[str, Any]]:
+        """개별 게시물의 댓글 수집"""
+        try:
+            await self._check_rate_limit()
+            
+            def _get_comments():
+                try:
+                    submission = self.client.submission(id=post_id)
+                    submission.comments.replace_more(limit=0)  # "더 보기" 확장 안함
+                    
+                    comments = []
+                    for comment in submission.comments.list()[:max_comments]:
+                        if hasattr(comment, 'body') and comment.body not in ['[deleted]', '[removed]', '']:
+                            comments.append({
+                                'type': 'comment',
+                                'id': comment.id,
+                                'content': comment.body,
+                                'score': getattr(comment, 'score', 0),
+                                'created_utc': comment.created_utc,
+                                'author': comment.author.name if comment.author else '[deleted]',
+                                'parent_post_id': post_id,
+                                'comment_depth': 0,  # 대댓글 깊이는 일단 0으로
+                                'subreddit': submission.subreddit.display_name,
+                                'url': f"https://reddit.com{comment.permalink}"
+                            })
+                    return comments
+                except Exception as e:
+                    logger.warning(f"⚠️ 게시물 {post_id}의 댓글 수집 실패: {str(e)}")
+                    return []
+            
+            loop = asyncio.get_event_loop()
+            if self.thread_pool:
+                comments = await loop.run_in_executor(self.thread_pool, _get_comments)
+            else:
+                comments = await loop.run_in_executor(None, _get_comments)
+            
+            logger.debug(f"📝 게시물 {post_id}: {len(comments)}개 댓글 수집")
+            return comments
+            
+        except Exception as e:
+            logger.error(f"❌ 댓글 수집 오류 (post_id: {post_id}): {str(e)}")
+            return []
