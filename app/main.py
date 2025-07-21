@@ -27,8 +27,9 @@ logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler()
-    ]
+        logging.StreamHandler(sys.stdout)  # 명시적으로 stdout 지정
+    ],
+    force=True  # 기존 로거 설정 덮어쓰기
 )
 
 # 루트 로거에 컬러 포맷터 적용
@@ -37,6 +38,12 @@ for handler in root_logger.handlers:
     handler.setFormatter(ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 
 logger = logging.getLogger(__name__)
+
+# uvicorn 로거도 설정
+uvicorn_logger = logging.getLogger("uvicorn")
+uvicorn_logger.setLevel(logging.INFO)
+uvicorn_access_logger = logging.getLogger("uvicorn.access")
+uvicorn_access_logger.setLevel(logging.INFO)
 
 # FastAPI 앱 생성
 app = FastAPI(
