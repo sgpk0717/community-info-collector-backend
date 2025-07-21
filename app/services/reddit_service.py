@@ -157,24 +157,39 @@ class RedditService:
             'linguistic_flags': linguistic_flags
         }
         
-    async def search_posts(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """Reddit에서 키워드로 게시물 검색 - 다중 벡터 수집 전략"""
+    async def search_posts(self, query: str, limit: int = 50, time_filter: str = 'all') -> List[Dict[str, Any]]:
+        """Reddit에서 키워드로 게시물 검색 - 다중 벡터 수집 전략
+        
+        Args:
+            query: 검색 키워드
+            limit: 최대 게시물 수
+            time_filter: 시간 필터 ('hour', 'day', 'week', 'month', 'year', 'all')
+        """
         try:
             # Rate limit 체크
             await self._check_rate_limit()
             
-            logger.info(f"🔍 Reddit 검색 시작: '{query}' (최대 {limit}개 게시물)")
+            logger.info(f"🔍 Reddit 검색 시작: '{query}' (최대 {limit}개 게시물, 기간: {time_filter})")
             
             # Reddit API 호출은 스레드풀에서 실행
             loop = asyncio.get_event_loop()
             
             def _search():
-                # 다중 벡터 수집 전략
-                vectors = [
-                    {'name': 'zeitgeist', 'sort': 'hot', 'time_filter': 'week', 'limit': limit//3},
-                    {'name': 'underground', 'sort': 'controversial', 'time_filter': 'month', 'limit': limit//3},
-                    {'name': 'vanguard', 'sort': 'new', 'time_filter': 'all', 'limit': limit//3}
-                ]
+                # 다중 벡터 수집 전략 (시간 필터 적용)
+                # 사용자 지정 time_filter가 있으면 모든 벡터에 적용
+                if time_filter != 'all':
+                    vectors = [
+                        {'name': 'zeitgeist', 'sort': 'hot', 'time_filter': time_filter, 'limit': limit//3},
+                        {'name': 'underground', 'sort': 'controversial', 'time_filter': time_filter, 'limit': limit//3},
+                        {'name': 'vanguard', 'sort': 'new', 'time_filter': time_filter, 'limit': limit//3}
+                    ]
+                else:
+                    # 기본 전략
+                    vectors = [
+                        {'name': 'zeitgeist', 'sort': 'hot', 'time_filter': 'week', 'limit': limit//3},
+                        {'name': 'underground', 'sort': 'controversial', 'time_filter': 'month', 'limit': limit//3},
+                        {'name': 'vanguard', 'sort': 'new', 'time_filter': 'all', 'limit': limit//3}
+                    ]
                 
                 logger.info(f"📊 다중 벡터 수집 전략 시작 - 총 {len(vectors)}개 벡터")
                 all_submissions = []

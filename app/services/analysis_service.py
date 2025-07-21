@@ -2,12 +2,13 @@ from typing import Dict, Any, List, Optional
 from app.services.reddit_service import RedditService
 from app.services.llm_service import LLMService
 from app.services.database_service import DatabaseService
-from app.schemas.search import SearchRequest, ReportLength
+from app.schemas.search import SearchRequest, ReportLength, TimeFilter
 from app.schemas.report import ReportCreate
 import logging
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,32 @@ class AnalysisService:
         self.db_service = DatabaseService()
         self.thread_pool = thread_pool
         self.api_semaphore = api_semaphore
+    
+    def _calculate_time_range(self, request: SearchRequest) -> tuple[datetime, datetime, str]:
+        """시간 필터에 따른 날짜 범위 계산"""
+        now = datetime.now()
+        
+        if request.time_filter == TimeFilter.custom and request.start_date and request.end_date:
+            return request.start_date, request.end_date, 'all'
+        
+        # 시간 필터별 계산
+        time_ranges = {
+            TimeFilter.hour_1: (now - timedelta(hours=1), 'hour'),
+            TimeFilter.hour_3: (now - timedelta(hours=3), 'hour'),
+            TimeFilter.hour_6: (now - timedelta(hours=6), 'day'),
+            TimeFilter.hour_12: (now - timedelta(hours=12), 'day'),
+            TimeFilter.day_1: (now - timedelta(days=1), 'day'),
+            TimeFilter.day_3: (now - timedelta(days=3), 'week'),
+            TimeFilter.week_1: (now - timedelta(weeks=1), 'week'),
+            TimeFilter.month_1: (now - timedelta(days=30), 'month'),
+        }
+        
+        if request.time_filter and request.time_filter in time_ranges:
+            start_time, reddit_filter = time_ranges[request.time_filter]
+            return start_time, now, reddit_filter
+        
+        # 기본값: 전체 기간
+        return datetime.min, now, 'all'
         
     async def process_search_request(self, request: SearchRequest, progress_callback=None) -> Dict[str, Any]:
         """검색 요청 처리 및 분석"""
@@ -50,7 +77,12 @@ class AnalysisService:
                 expanded_keywords = await self.llm_service.expand_keywords(request.query)  # 내부에서 번역됨
                 logger.info(f"📝 확장된 키워드 ({len(expanded_keywords)}개): {expanded_keywords}")
             
-            # 4. 게시물 수집 (영어로)
+            # 4. 시간 범위 계산
+            start_date, end_date, reddit_time_filter = self._calculate_time_range(request)
+            if request.time_filter:
+                logger.info(f"⏰ 시간 필터 적용: {request.time_filter.value} ({start_date.strftime('%Y-%m-%d %H:%M')} ~ {end_date.strftime('%Y-%m-%d %H:%M')})")
+            
+            # 5. 게시물 수집 (영어로)
             if progress_callback:
                 await progress_callback("소셜 미디어 데이터 수집 중", 20)
             
@@ -58,10 +90,10 @@ class AnalysisService:
             
             # Reddit 검색 (영어 키워드 사용)
             if "reddit" in request.sources:
-                logger.info(f"🔍 Reddit 검색 시작: '{english_query}'")
+                logger.info(f"🔍 Reddit 검색 시작: '{english_query}' (시간 필터: {reddit_time_filter})")
                 
                 # 영어 키워드로 검색
-                posts = await self.reddit_service.search_posts(english_query, limit=30)
+                posts = await self.reddit_service.search_posts(english_query, limit=30, time_filter=reddit_time_filter)
                 all_posts.extend(posts)
                 
                 if progress_callback:
@@ -78,6 +110,17 @@ class AnalysisService:
                     
                     if progress_callback:
                         await progress_callback(f"총 {len(all_posts)}개 게시물 수집 완료", 50)
+            
+            # 날짜 범위에 따른 게시물 필터링
+            if request.time_filter:
+                filtered_posts = []
+                for post in all_posts:
+                    post_date = datetime.fromtimestamp(post['created_utc'])
+                    if start_date <= post_date <= end_date:
+                        filtered_posts.append(post)
+                
+                logger.info(f"📅 날짜 필터링: {len(all_posts)}개 → {len(filtered_posts)}개 (범위: {start_date} ~ {end_date})")
+                all_posts = filtered_posts
             
             # 게시물이 없으면 에러
             if not all_posts:

@@ -68,7 +68,15 @@ class DatabaseService:
                 .order('created_at', desc=True)\
                 .execute()
             
-            return result.data if result.data else []
+            # 각 보고서에 글자수 추가
+            reports = result.data if result.data else []
+            for report in reports:
+                if report.get('full_report'):
+                    report['report_char_count'] = len(report['full_report'])
+                else:
+                    report['report_char_count'] = 0
+            
+            return reports
             
         except Exception as e:
             logger.error(f"Database error in get_user_reports: {str(e)}")
