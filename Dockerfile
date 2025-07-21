@@ -16,8 +16,8 @@ RUN python -m pip install --no-cache-dir --upgrade pip && \
 # 소스 코드 복사
 COPY . .
 
-# 포트 노출 (환경변수 사용)
-EXPOSE $PORT
+# 포트 노출
+EXPOSE 10000
 
 # 앱 실행 (환경변수 PORT 사용)
-CMD python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+CMD ["/bin/sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.api.v1.router import api_router
 import logging
+import sys
 
 # 컬러 로깅 설정
 class ColoredFormatter(logging.Formatter):
@@ -109,15 +110,54 @@ async def root():
 @app.on_event("startup")
 async def startup_event():
     """앱 시작 시 실행"""
+    import os
+    import socket
+    
     logger.info("="*80)
     logger.info(f"🚀 {settings.APP_NAME} v{settings.APP_VERSION} 서버 시작!")
     logger.info(f"🌍 환경: {settings.APP_ENV}")
     logger.info(f"📊 로그 레벨: {settings.LOG_LEVEL}")
     logger.info("="*80)
-    logger.info("🎯 컬러 로깅 시스템 활성화됨")
-    logger.info("🔍 Reddit API 연결 준비됨")
-    logger.info("🤖 OpenAI API 연결 준비됨")
-    logger.info("💾 Supabase 데이터베이스 연결 준비됨")
+    
+    # 환경 정보 출력
+    logger.info("📋 환경 정보:")
+    logger.info(f"   - PORT 환경변수: {os.environ.get('PORT', 'NOT SET')}")
+    logger.info(f"   - 호스트명: {socket.gethostname()}")
+    logger.info(f"   - Python 버전: {sys.version}")
+    logger.info(f"   - 현재 작업 디렉토리: {os.getcwd()}")
+    
+    # API 엔드포인트 정보
+    logger.info("="*80)
+    logger.info("🔗 사용 가능한 API 엔드포인트:")
+    logger.info(f"   - 헬스체크: GET /")
+    logger.info(f"   - API 문서: GET /docs")
+    logger.info(f"   - 사용자 등록: POST {settings.API_V1_STR}/users/register")
+    logger.info(f"   - 사용자 로그인: POST {settings.API_V1_STR}/users/login") 
+    logger.info(f"   - 검색 요청: POST {settings.API_V1_STR}/search")
+    logger.info(f"   - 보고서 조회: GET {settings.API_V1_STR}/reports/{{user_nickname}}")
+    
+    # 미들웨어 정보
+    logger.info("="*80)
+    logger.info("🛡️ 활성화된 미들웨어:")
+    logger.info("   1. RequestLoggingMiddleware (요청 로깅)")
+    logger.info("   2. CORSMiddleware (CORS 처리)")
+    logger.info(f"      - 허용된 Origin: {settings.CORS_ORIGINS}")
+    
+    # 서비스 상태
+    logger.info("="*80)
+    logger.info("🎯 서비스 상태:")
+    logger.info("   - 컬러 로깅 시스템: ✅ 활성화")
+    logger.info("   - Reddit API: ✅ 준비됨")
+    logger.info("   - OpenAI API: ✅ 준비됨")
+    logger.info("   - Supabase DB: ✅ 준비됨")
+    
+    # 접속 정보
+    logger.info("="*80)
+    logger.info("📡 서버 접속 정보:")
+    port = os.environ.get('PORT', '10000')
+    logger.info(f"   - 로컬: http://0.0.0.0:{port}")
+    logger.info(f"   - 프로덕션: https://community-info-collector-backend.onrender.com")
+    
     logger.info("="*80)
     logger.info("✅ 모든 시스템 준비 완료! 분석 요청을 기다리는 중...")
     logger.info("="*80)
