@@ -6,10 +6,27 @@ import logging
 import sys
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+import pytz
+from datetime import datetime
+
+# 한국 시간대 설정
+KST = pytz.timezone('Asia/Seoul')
+
+# 한국 시간을 사용하는 Formatter
+class KSTFormatter(logging.Formatter):
+    """한국 시간대(KST)를 사용하는 로그 포맷터"""
+    def formatTime(self, record, datefmt=None):
+        # UTC 시간을 한국 시간으로 변환
+        dt = datetime.fromtimestamp(record.created, tz=pytz.UTC)
+        dt = dt.astimezone(KST)
+        if datefmt:
+            return dt.strftime(datefmt)
+        else:
+            return dt.strftime('%Y-%m-%d %H:%M:%S')
 
 # 컬러 로깅 설정
-class ColoredFormatter(logging.Formatter):
-    """컬러 로그 포맷터"""
+class ColoredFormatter(KSTFormatter):
+    """한국 시간대를 사용하는 컬러 로그 포맷터"""
     COLORS = {
         'DEBUG': '\033[94m',    # 파랑
         'INFO': '\033[92m',     # 초록
@@ -42,7 +59,7 @@ file_handler = RotatingFileHandler(
     backupCount=5,
     encoding='utf-8'
 )
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+file_handler.setFormatter(KSTFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 
 # 로깅 설정
 logging.basicConfig(
