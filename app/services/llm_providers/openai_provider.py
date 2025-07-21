@@ -9,6 +9,13 @@ logger = logging.getLogger(__name__)
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI API Provider 구현"""
     
+    # 추론 모델 목록 (o1, o3, o4 시리즈)
+    REASONING_MODELS = {
+        'o1-preview', 'o1-mini', 
+        'o3', 'o3-mini',
+        'o4', 'o4-mini'
+    }
+    
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         """
         OpenAI Provider 초기화
@@ -20,6 +27,11 @@ class OpenAIProvider(BaseLLMProvider):
         self.client = OpenAI(api_key=api_key) if api_key else OpenAI()
         self.model = model or "o4-mini"
         logger.info(f"OpenAI Provider 초기화 완료 - 모델: {self.model}")
+    
+    def is_reasoning_model(self, model: Optional[str] = None) -> bool:
+        """주어진 모델이 추론 모델인지 확인"""
+        check_model = model or self.model
+        return check_model in self.REASONING_MODELS
     
     async def generate(
         self,
@@ -52,15 +64,29 @@ class OpenAIProvider(BaseLLMProvider):
     ) -> LLMResponse:
         """OpenAI Chat Completions API 호출"""
         try:
-            logger.info(f"🤖 OpenAI API 호출 시작 - 모델: {self.model}, 온도: {temperature}")
+            # 추론 모델 여부 확인
+            is_reasoning = self.is_reasoning_model()
             
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs  # 추가 파라미터 (top_p, frequency_penalty 등)
-            )
+            if is_reasoning:
+                logger.info(f"🤖 OpenAI 추론 모델 API 호출 시작 - 모델: {self.model}")
+                logger.info("   추론 모델이므로 model과 messages 파라미터만 사용합니다.")
+                
+                # 추론 모델은 model과 messages만 지원
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages
+                )
+            else:
+                logger.info(f"🤖 OpenAI API 호출 시작 - 모델: {self.model}, 온도: {temperature}")
+                
+                # 일반 모델은 모든 파라미터 지원
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **kwargs  # 추가 파라미터 (top_p, frequency_penalty 등)
+                )
             
             content = response.choices[0].message.content.strip()
             
