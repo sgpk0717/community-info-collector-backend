@@ -112,13 +112,16 @@ class LLMService:
                - DD (Due Diligence)
                - YOLO, calls, puts (for stock-related)
                - ELI5 (Explain Like I'm 5)
-            5. Extract 10-20 keywords to maximize coverage
+            5. Extract 15-30 keywords to maximize comprehensive coverage
+            6. Include temporal variations: "recent", "latest", "new", "upcoming", "2024", "2025"
+            7. Add intensity modifiers: "major", "significant", "breaking", "urgent", "critical"
             
             Examples:
-            - For "Tesla earnings prediction": ["Tesla", "TSLA", "Tesla earnings", "TSLA earnings", "Tesla Q4", "Tesla forecast", "TSLA prediction", "Tesla revenue", "Tesla results", "Tesla call", "TSLA DD", "Tesla outlook", "when Tesla earnings", "TSLA vs", "Tesla profit"]
-            - For "Apple AI": ["Apple", "AAPL", "Apple AI", "Apple artificial intelligence", "Apple ML", "Apple GPT", "Apple Siri", "AAPL AI", "Apple vs Google AI", "Apple AI news", "when Apple AI", "Apple AI chip"]
+            - For "Tesla earnings prediction": ["Tesla", "TSLA", "Tesla earnings", "TSLA earnings", "Tesla Q4", "Tesla forecast", "TSLA prediction", "Tesla revenue", "Tesla results", "Tesla call", "TSLA DD", "Tesla outlook", "when Tesla earnings", "TSLA vs", "Tesla profit", "Tesla latest news", "Tesla 2024", "Tesla upcoming", "Tesla major announcement", "Tesla breaking news"]
+            - For "Apple AI": ["Apple", "AAPL", "Apple AI", "Apple artificial intelligence", "Apple ML", "Apple GPT", "Apple Siri", "AAPL AI", "Apple vs Google AI", "Apple AI news", "when Apple AI", "Apple AI chip", "Apple Intelligence", "Apple machine learning", "Apple AI features", "Apple AI 2024", "Apple latest AI", "Apple AI update"]
             
             Generate comprehensive keywords for: "{english_query}"
+            Target: 20-40 keywords for maximum data coverage
             Return as JSON array:
             """
             
@@ -140,7 +143,7 @@ class LLMService:
                 
                 keywords = json.loads(content)
                 if isinstance(keywords, list):
-                    result = keywords[:5]  # 최대 5개
+                    result = keywords  # 전체 사용 (제한 해제)
                     logger.info(f"✅ 키워드 확장 완료: {len(result)}개 - {result}")
                     return result
             except json.JSONDecodeError:

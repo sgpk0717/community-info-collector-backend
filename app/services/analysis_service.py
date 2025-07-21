@@ -159,15 +159,17 @@ class AnalysisService:
                 'sample_titles': [p['title'] for p in unique_posts[:3]]
             })
             
-            # 확장된 키워드 정보 추가
+            # 확장된 키워드 정보 추가 (전체 사용)
             if expanded_keywords:
-                for kw in expanded_keywords[:5]:  # 최대 5개까지만
-                    keywords_used.append({
-                        'keyword': kw,
-                        'translated_keyword': None,  # 이미 영어
-                        'posts_found': len([p for p in unique_posts if kw.lower() in p.get('title', '').lower() or kw.lower() in p.get('selftext', '').lower()]),
-                        'sample_titles': []
-                    })
+                for kw in expanded_keywords:  # 전체 확장 키워드 사용
+                    posts_found_count = len([p for p in unique_posts if kw.lower() in p.get('title', '').lower() or kw.lower() in p.get('selftext', '').lower()])
+                    if posts_found_count > 0:  # 실제로 게시물이 발견된 키워드만 저장
+                        keywords_used.append({
+                            'keyword': kw,
+                            'translated_keyword': None,  # 이미 영어
+                            'posts_found': posts_found_count,
+                            'sample_titles': [p['title'] for p in unique_posts if kw.lower() in p.get('title', '').lower()][:2]  # 샘플 2개만
+                        })
             
             report_create = ReportCreate(
                 user_nickname=request.user_nickname,
