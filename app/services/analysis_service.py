@@ -6,14 +6,18 @@ from app.schemas.search import SearchRequest, ReportLength
 from app.schemas.report import ReportCreate
 import logging
 from uuid import uuid4
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
 
 logger = logging.getLogger(__name__)
 
 class AnalysisService:
-    def __init__(self):
-        self.reddit_service = RedditService()
-        self.llm_service = LLMService()
+    def __init__(self, thread_pool: Optional[ThreadPoolExecutor] = None, api_semaphore: Optional[asyncio.Semaphore] = None):
+        self.reddit_service = RedditService(thread_pool=thread_pool)
+        self.llm_service = LLMService(api_semaphore=api_semaphore)
         self.db_service = DatabaseService()
+        self.thread_pool = thread_pool
+        self.api_semaphore = api_semaphore
         
     async def process_search_request(self, request: SearchRequest, progress_callback=None) -> Dict[str, Any]:
         """검색 요청 처리 및 분석"""

@@ -4,6 +4,8 @@ from app.config import settings
 from app.api.v1.router import api_router
 import logging
 import sys
+import asyncio
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 # 컬러 로깅 설정
 class ColoredFormatter(logging.Formatter):
@@ -136,6 +138,18 @@ async def root():
         "status": "running"
     }
 
+# 전역 executor 설정
+thread_pool_executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="io_worker")
+process_pool_executor = ProcessPoolExecutor(max_workers=4)
+
+# 전역 semaphore 설정 (동시 API 호출 제한)
+api_semaphore = asyncio.Semaphore(5)  # 동시에 5개까지만 외부 API 호출 허용
+
+# executor를 app state에 저장
+app.state.thread_pool = thread_pool_executor
+app.state.process_pool = process_pool_executor
+app.state.api_semaphore = api_semaphore
+
 @app.on_event("startup")
 async def startup_event():
     """앱 시작 시 실행"""
@@ -179,6 +193,9 @@ async def startup_event():
     logger.info("   - Reddit API: ✅ 준비됨")
     logger.info("   - OpenAI API: ✅ 준비됨")
     logger.info("   - Supabase DB: ✅ 준비됨")
+    logger.info("   - Thread Pool: ✅ 10 workers")
+    logger.info("   - Process Pool: ✅ 4 workers")
+    logger.info("   - API Semaphore: ✅ 5 concurrent calls")
     
     # 접속 정보
     logger.info("="*80)
@@ -196,5 +213,12 @@ async def shutdown_event():
     """앱 종료 시 실행"""
     logger.info("="*50)
     logger.info("🛑 서버 종료 중...")
+    
+    # Executor 정리
+    logger.info("   - Thread Pool 종료 중...")
+    thread_pool_executor.shutdown(wait=True)
+    logger.info("   - Process Pool 종료 중...")
+    process_pool_executor.shutdown(wait=True)
+    
     logger.info("👋 안녕히 가세요!")
     logger.info("="*50)

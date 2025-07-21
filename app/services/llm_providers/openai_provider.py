@@ -2,6 +2,7 @@ from typing import List, Dict, Any, Optional
 from openai import OpenAI
 import logging
 from .base import BaseLLMProvider, LLMResponse
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -16,16 +17,18 @@ class OpenAIProvider(BaseLLMProvider):
         'o4', 'o4-mini'
     }
     
-    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None, api_semaphore: Optional[asyncio.Semaphore] = None):
         """
         OpenAI Provider 초기화
         
         Args:
             api_key: OpenAI API 키 (없으면 환경변수에서 자동 로드)
             model: 사용할 모델명 (기본값: o4-mini)
+            api_semaphore: API 동시 호출 제한을 위한 Semaphore
         """
         self.client = OpenAI(api_key=api_key) if api_key else OpenAI()
         self.model = model or "o4-mini"
+        self.api_semaphore = api_semaphore or asyncio.Semaphore(3)  # 기본값: 동시 3개 호출
         logger.info(f"OpenAI Provider 초기화 완료 - 모델: {self.model}")
     
     def is_reasoning_model(self, model: Optional[str] = None) -> bool:
@@ -63,9 +66,13 @@ class OpenAIProvider(BaseLLMProvider):
         **kwargs
     ) -> LLMResponse:
         """OpenAI Chat Completions API 호출"""
-        try:
-            # 추론 모델 여부 확인
-            is_reasoning = self.is_reasoning_model()
+        # Semaphore로 API 호출 제한
+        async with self.api_semaphore:
+            logger.info(f"🔒 API Semaphore 획듍 - 현재 대기: {self.api_semaphore._value}/{self.api_semaphore._initial_value}")
+            
+            try:
+                # 추론 모델 여부 확인
+                is_reasoning = self.is_reasoning_model()
             
             if is_reasoning:
                 logger.info(f"🤖 OpenAI 추론 모델 API 호출 시작 - 모델: {self.model}")
@@ -99,20 +106,22 @@ class OpenAIProvider(BaseLLMProvider):
                     "total_tokens": response.usage.total_tokens
                 }
             
-            logger.info(f"✅ OpenAI API 응답 수신 - 길이: {len(content)} 문자")
-            if usage:
-                logger.info(f"   토큰 사용: {usage['total_tokens']} (프롬프트: {usage['prompt_tokens']}, 완성: {usage['completion_tokens']})")
-            
-            return LLMResponse(
-                content=content,
-                model=self.model,
-                usage=usage,
-                raw_response=response
-            )
-            
-        except Exception as e:
-            logger.error(f"❌ OpenAI API 호출 실패: {str(e)}")
-            raise
+                logger.info(f"✅ OpenAI API 응답 수신 - 길이: {len(content)} 문자")
+                if usage:
+                    logger.info(f"   토큰 사용: {usage['total_tokens']} (프롬프트: {usage['prompt_tokens']}, 완성: {usage['completion_tokens']})")
+                
+                return LLMResponse(
+                    content=content,
+                    model=self.model,
+                    usage=usage,
+                    raw_response=response
+                )
+                
+            except Exception as e:
+                logger.error(f"❌ OpenAI API 호출 실패: {str(e)}")
+                raise
+            finally:
+                logger.info(f"🔓 API Semaphore 해제")
     
     @property
     def provider_name(self) -> str:

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, BackgroundTasks, WebSocket, WebSocketDisconnect, Request
 from app.schemas.search import SearchRequest, SearchResponse, ProgressUpdate
 from app.services.analysis_service import AnalysisService
 from app.utils.websocket_manager import WebSocketManager
@@ -18,17 +18,22 @@ progress_store: Dict[str, ProgressUpdate] = {}
 
 @router.post("/search", response_model=SearchResponse)
 async def search_and_analyze(
-    request: SearchRequest,
-    background_tasks: BackgroundTasks
+    search_request: SearchRequest,
+    background_tasks: BackgroundTasks,
+    request: Request
 ):
     """키워드 기반 커뮤니티 분석 요청"""
-    logger.info(f"🔍 검색 요청 수신 - 키워드: {request.query}, 사용자: {request.user_nickname}")
-    logger.info(f"   소스: {request.sources}, 길이: {request.length}")
+    logger.info(f"🔍 검색 요청 수신 - 키워드: {search_request.query}, 사용자: {search_request.user_nickname}")
+    logger.info(f"   소스: {search_request.sources}, 길이: {search_request.length}")
     
     try:
         # 세션 ID 생성 (클라이언트가 제공하지 않은 경우)
-        session_id = request.session_id or str(uuid4())
+        session_id = search_request.session_id or str(uuid4())
         query_id = str(uuid4())
+        
+        # 스레드풀과 semaphore 가져오기
+        thread_pool = getattr(request.app.state, 'thread_pool', None)
+        api_semaphore = getattr(request.app.state, 'api_semaphore', None)
         
         # 즉시 응답 반환
         response = SearchResponse(
@@ -43,9 +48,11 @@ async def search_and_analyze(
         # 백그라운드 작업 추가
         background_tasks.add_task(
             process_analysis_task,
-            request,
+            search_request,
             session_id,
-            query_id
+            query_id,
+            thread_pool,
+            api_semaphore
         )
         
         return response
@@ -61,13 +68,13 @@ async def search_and_analyze(
             message=f"요청 처리 중 오류가 발생했습니다: {str(e)}"
         )
 
-async def process_analysis_task(request: SearchRequest, session_id: str, query_id: str):
+async def process_analysis_task(request: SearchRequest, session_id: str, query_id: str, thread_pool=None, api_semaphore=None):
     """백그라운드에서 실제 분석 수행"""
     logger.info(f"🚀 백그라운드 분석 시작 - 세션: {session_id}, 쿼리: {query_id}")
     logger.info(f"   키워드: {request.query}, 사용자: {request.user_nickname}")
     
     try:
-        analysis_service = AnalysisService()
+        analysis_service = AnalysisService(thread_pool=thread_pool, api_semaphore=api_semaphore)
         
         # 진행상황 업데이트 콜백
         async def update_progress(message: str, progress: int):

@@ -1,10 +1,70 @@
 from fastapi import APIRouter, Query, HTTPException
-from typing import List
+from typing import List, Optional
 import os
 import glob
 from collections import deque
+import aiofiles
+import asyncio
 
 router = APIRouter()
+
+async def read_last_n_lines(file_path: str, n: int, offset: int = 0) -> tuple[List[str], int]:
+    """
+    대용량 파일에서도 효율적으로 마지막 n개 라인을 읽습니다.
+    파일 끝에서부터 청크 단위로 읽어서 메모리 효율성을 높입니다.
+    """
+    chunk_size = 8192  # 8KB chunks
+    lines = deque(maxlen=n + offset)
+    
+    async with aiofiles.open(file_path, 'rb') as file:
+        # 파일 크기 구하기
+        await file.seek(0, 2)  # 파일 끝으로 이동
+        file_size = await file.tell()
+        
+        if file_size == 0:
+            return [], 0
+        
+        # 파일 끝에서부터 청크 단위로 읽기
+        position = file_size
+        buffer = b""
+        
+        while position > 0 and len(lines) < n + offset:
+            # 읽을 크기 계산
+            read_size = min(chunk_size, position)
+            position -= read_size
+            
+            # 해당 위치로 이동하여 읽기
+            await file.seek(position)
+            chunk = await file.read(read_size)
+            
+            # 버퍼에 추가 (역순)
+            buffer = chunk + buffer
+            
+            # 라인 단위로 분리
+            while b'\n' in buffer:
+                line_end = buffer.rfind(b'\n')
+                line = buffer[line_end + 1:]
+                if line:  # 빈 라인이 아니면
+                    try:
+                        lines.appendleft(line.decode('utf-8').rstrip())
+                    except UnicodeDecodeError:
+                        # 깨진 문자 무시
+                        pass
+                buffer = buffer[:line_end]
+        
+        # 남은 버퍼 처리
+        if buffer and len(lines) < n + offset:
+            try:
+                lines.appendleft(buffer.decode('utf-8').rstrip())
+            except UnicodeDecodeError:
+                pass
+    
+    # offset 적용
+    result_lines = list(lines)
+    if offset > 0:
+        result_lines = result_lines[:-offset] if len(result_lines) > offset else []
+    
+    return result_lines[-n:], len(lines)
 
 @router.get("/logs/tail")
 async def tail_logs(
@@ -13,6 +73,7 @@ async def tail_logs(
 ):
     """
     최신 로그 파일의 마지막 n개 라인을 반환합니다.
+    대용량 파일에서도 효율적으로 작동합니다.
     
     - **lines**: 읽을 로그 라인 수 (1-10000)
     - **offset**: 끝에서부터의 오프셋 (0이면 가장 최신)
@@ -32,36 +93,15 @@ async def tail_logs(
         log_files.sort()
         latest_log = log_files[-1]
         
-        # 전체 파일을 라인 단위로 읽기
-        with open(latest_log, 'r', encoding='utf-8') as file:
-            all_lines = file.readlines()
-        
-        # offset과 lines를 고려하여 적절한 범위 선택
-        total_lines = len(all_lines)
-        
-        # 끝에서부터 offset 위치 계산
-        end_index = total_lines - offset
-        start_index = max(0, end_index - lines)
-        
-        # 범위 체크
-        if start_index >= total_lines:
-            return {
-                "filename": os.path.basename(latest_log),
-                "lines": 0,
-                "offset": offset,
-                "total_lines": total_lines,
-                "content": []
-            }
-        
-        # 선택된 라인들 반환
-        selected_lines = all_lines[start_index:end_index]
+        # 효율적으로 마지막 라인들 읽기
+        selected_lines, total_lines = await read_last_n_lines(latest_log, lines, offset)
         
         return {
             "filename": os.path.basename(latest_log),
             "lines": len(selected_lines),
             "offset": offset,
             "total_lines": total_lines,
-            "content": [line.rstrip() for line in selected_lines]
+            "content": selected_lines
         }
         
     except FileNotFoundError:
@@ -80,15 +120,18 @@ async def list_log_files():
             return {"files": []}
         
         log_files = glob.glob(os.path.join(log_dir, "app_*.log*"))
-        files_info = []
         
-        for file_path in log_files:
-            stat = os.stat(file_path)
-            files_info.append({
+        # 비동기로 파일 정보 수집
+        async def get_file_info(file_path):
+            loop = asyncio.get_event_loop()
+            stat = await loop.run_in_executor(None, os.stat, file_path)
+            return {
                 "filename": os.path.basename(file_path),
                 "size": stat.st_size,
                 "modified": stat.st_mtime
-            })
+            }
+        
+        files_info = await asyncio.gather(*[get_file_info(fp) for fp in log_files])
         
         # 수정 시간 기준으로 정렬 (최신 파일이 첫 번째)
         files_info.sort(key=lambda x: x["modified"], reverse=True)
@@ -105,6 +148,7 @@ async def search_logs(
 ):
     """
     로그 파일에서 특정 키워드를 검색합니다.
+    스트리밍 방식으로 메모리 효율적으로 처리합니다.
     """
     try:
         log_dir = "logs"
@@ -119,11 +163,13 @@ async def search_logs(
         log_files.sort()
         latest_log = log_files[-1]
         
-        # 키워드를 포함하는 라인 찾기
+        # 비동기로 키워드를 포함하는 라인 찾기
         matching_lines = []
-        with open(latest_log, 'r', encoding='utf-8') as file:
-            for line in file:
-                if keyword.lower() in line.lower():
+        keyword_lower = keyword.lower()
+        
+        async with aiofiles.open(latest_log, 'r', encoding='utf-8') as file:
+            async for line in file:
+                if keyword_lower in line.lower():
                     matching_lines.append(line.rstrip())
                     if len(matching_lines) >= lines:
                         break
@@ -137,3 +183,51 @@ async def search_logs(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"로그 검색 실패: {str(e)}")
+
+@router.get("/logs/stream")
+async def stream_logs(
+    lines: int = Query(default=50, ge=1, le=1000, description="스트리밍할 초기 라인 수")
+):
+    """
+    로그를 실시간으로 스트리밍합니다. (Server-Sent Events)
+    """
+    from fastapi.responses import StreamingResponse
+    import json
+    
+    async def log_streamer():
+        log_dir = "logs"
+        log_files = glob.glob(os.path.join(log_dir, "app_*.log"))
+        if not log_files:
+            yield f"data: {json.dumps({'error': '로그 파일이 없습니다'})}\n\n"
+            return
+        
+        log_files.sort()
+        latest_log = log_files[-1]
+        
+        # 초기 라인들 전송
+        initial_lines, _ = await read_last_n_lines(latest_log, lines)
+        for line in initial_lines:
+            yield f"data: {json.dumps({'line': line})}\n\n"
+        
+        # 파일 변경 감지 및 새 라인 전송
+        last_position = os.path.getsize(latest_log)
+        
+        while True:
+            await asyncio.sleep(1)  # 1초마다 확인
+            
+            current_size = os.path.getsize(latest_log)
+            if current_size > last_position:
+                async with aiofiles.open(latest_log, 'r', encoding='utf-8') as file:
+                    await file.seek(last_position)
+                    async for line in file:
+                        yield f"data: {json.dumps({'line': line.rstrip()})}\n\n"
+                last_position = current_size
+    
+    return StreamingResponse(
+        log_streamer(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )

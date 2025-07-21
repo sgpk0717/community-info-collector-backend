@@ -5,6 +5,7 @@ from app.services.llm_providers import BaseLLMProvider, OpenAIProvider, GeminiPr
 import logging
 import json
 import os
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ LLMProviderType = Literal["openai", "gemini"]
 class LLMService:
     """다중 LLM Provider를 지원하는 통합 LLM Service"""
     
-    def __init__(self, provider_type: Optional[LLMProviderType] = None):
+    def __init__(self, provider_type: Optional[LLMProviderType] = None, api_semaphore: Optional[asyncio.Semaphore] = None):
         """
         LLMService 초기화
         
@@ -28,13 +29,14 @@ class LLMService:
             provider_type = os.getenv('LLM_PROVIDER', 'openai').lower()
         
         # Provider 초기화
+        self.api_semaphore = api_semaphore
         self.provider = self._initialize_provider(provider_type)
         logger.info(f"LLMService 초기화 완료 - Provider: {self.provider.provider_name}, Model: {self.provider.default_model}")
     
     def _initialize_provider(self, provider_type: str) -> BaseLLMProvider:
         """Provider 타입에 따라 적절한 provider 인스턴스 생성"""
         if provider_type == "openai":
-            return OpenAIProvider()
+            return OpenAIProvider(api_semaphore=self.api_semaphore)
         elif provider_type == "gemini":
             return GeminiProvider()
         else:
