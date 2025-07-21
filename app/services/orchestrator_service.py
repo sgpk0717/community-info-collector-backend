@@ -257,7 +257,16 @@ class OrchestratorService:
         if consistency_score < 0.7 or not completeness['is_complete']:
             logger.info("📝 품질 개선을 위한 보고서 재생성")
             improved_report = await self._improve_report(report, completeness['missing'])
-            return improved_report
+            # 개선된 보고서에서 summary와 full_report 확인
+            return {
+                'summary': improved_report.get('summary', self._extract_summary(improved_report.get('full_report', ''))),
+                'full_report': improved_report.get('full_report', ''),
+                'quality_metrics': {
+                    'consistency_score': consistency_score,
+                    'completeness': completeness,
+                    'quality_score': improved_report.get('quality_score', 0)
+                }
+            }
         
         # 5. 최종 포맷팅
         final_report = self._format_final_report(cleaned_sections)
@@ -511,6 +520,12 @@ class OrchestratorService:
             
         except Exception as e:
             logger.error(f"보고서 개선 실패: {str(e)}")
+        
+        # summary와 quality_metrics가 있는지 확인하고 없으면 추가
+        if 'summary' not in report:
+            report['summary'] = self._extract_summary(report['full_report'])
+        if 'quality_score' not in report:
+            report['quality_score'] = await self._calculate_quality_score(report['sections'])
         
         return report
     
