@@ -7,7 +7,7 @@ import sys
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import pytz
-from datetime import datetime
+import datetime
 
 # 한국 시간대 설정
 KST = pytz.timezone('Asia/Seoul')
@@ -17,7 +17,7 @@ class KSTFormatter(logging.Formatter):
     """한국 시간대(KST)를 사용하는 로그 포맷터"""
     def formatTime(self, record, datefmt=None):
         # UTC 시간을 한국 시간으로 변환
-        dt = datetime.fromtimestamp(record.created, tz=pytz.UTC)
+        dt = datetime.datetime.fromtimestamp(record.created, tz=pytz.UTC)
         dt = dt.astimezone(KST)
         if datefmt:
             return dt.strftime(datefmt)
@@ -52,7 +52,7 @@ from logging.handlers import RotatingFileHandler
 import datetime
 
 # 파일 핸들러 생성 (10MB 크기 제한, 5개 백업 파일)
-log_filename = os.path.join(LOG_DIR, f"app_{datetime.datetime.now().strftime('%Y%m%d')}.log")
+log_filename = os.path.join(LOG_DIR, f"app_{datetime.datetime.now(KST).strftime('%Y%m%d')}.log")
 file_handler = RotatingFileHandler(
     log_filename,
     maxBytes=10*1024*1024,  # 10MB

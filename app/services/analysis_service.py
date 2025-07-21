@@ -148,6 +148,27 @@ class AnalysisService:
             
             # 5. 보고서 저장
             logger.info(f"💾 보고서 데이터베이스 저장 시작")
+            # 키워드 정보 수집
+            keywords_used = []
+            
+            # 원본 키워드 (한국어) 추가
+            keywords_used.append({
+                'keyword': request.query,
+                'translated_keyword': english_query,
+                'posts_found': len([p for p in unique_posts if request.query.lower() in p.get('title', '').lower() or request.query.lower() in p.get('selftext', '').lower()]),
+                'sample_titles': [p['title'] for p in unique_posts[:3]]
+            })
+            
+            # 확장된 키워드 정보 추가
+            if expanded_keywords:
+                for kw in expanded_keywords[:5]:  # 최대 5개까지만
+                    keywords_used.append({
+                        'keyword': kw,
+                        'translated_keyword': None,  # 이미 영어
+                        'posts_found': len([p for p in unique_posts if kw.lower() in p.get('title', '').lower() or kw.lower() in p.get('selftext', '').lower()]),
+                        'sample_titles': []
+                    })
+            
             report_create = ReportCreate(
                 user_nickname=request.user_nickname,
                 query_text=request.query,
@@ -155,7 +176,8 @@ class AnalysisService:
                 full_report=report_data['full_report'],
                 posts_collected=len(unique_posts),
                 report_length=request.length.value,
-                session_id=request.session_id
+                session_id=request.session_id,
+                keywords_used=keywords_used
             )
             
             report_id = await self.db_service.save_report(report_create)
