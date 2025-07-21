@@ -68,7 +68,17 @@ class OpenAIProvider(BaseLLMProvider):
         """OpenAI Chat Completions API 호출"""
         # Semaphore로 API 호출 제한
         async with self.api_semaphore:
-            logger.info(f"🔒 API Semaphore 획듍 - 현재 대기: {self.api_semaphore._value}/{self.api_semaphore._initial_value}")
+            # Semaphore의 현재 상태 로깅 (Python 버전에 따라 속성명이 다를 수 있음)
+            try:
+                # Python 3.10+
+                current = self.api_semaphore._value
+                initial = self.api_semaphore._initial_value
+            except AttributeError:
+                # Python 3.9 이하
+                current = self.api_semaphore._value
+                initial = getattr(self.api_semaphore, '_initial', 3)  # 기본값 사용
+            
+            logger.info(f"🔒 API Semaphore 획득 - 현재 대기: {current}/{initial}")
             
             try:
                 # 추론 모델 여부 확인
