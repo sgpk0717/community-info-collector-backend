@@ -48,11 +48,6 @@ class DatabaseService:
             report_dict['id'] = str(uuid4())
             report_dict['created_at'] = datetime.now().isoformat()
             
-            # keywords_used가 있으면 JSON 문자열로 변환
-            if 'keywords_used' in report_dict and report_dict['keywords_used']:
-                import json
-                report_dict['keywords_used'] = json.dumps(report_dict['keywords_used'], ensure_ascii=False)
-            
             result = self.client.table('reports').insert(report_dict).execute()
             
             if result.data:
@@ -73,21 +68,13 @@ class DatabaseService:
                 .order('created_at', desc=True)\
                 .execute()
             
-            # 각 보고서에 글자수 추가 및 keywords_used 파싱
+            # 각 보고서에 글자수 추가
             reports = result.data if result.data else []
-            import json
             for report in reports:
                 if report.get('full_report'):
                     report['report_char_count'] = len(report['full_report'])
                 else:
                     report['report_char_count'] = 0
-                
-                # keywords_used가 JSON 문자열이면 파싱
-                if report.get('keywords_used') and isinstance(report['keywords_used'], str):
-                    try:
-                        report['keywords_used'] = json.loads(report['keywords_used'])
-                    except:
-                        report['keywords_used'] = None
             
             return reports
             
