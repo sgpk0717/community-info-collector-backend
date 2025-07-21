@@ -127,20 +127,26 @@ class DatabaseService:
             # 각주 링크 데이터 준비
             links_data = []
             for link in footnote_mapping:
-                # created_utc 처리 (Reddit API에서는 Unix timestamp로 들어옴)
+                # created_utc 처리 (Supabase는 timestamp with time zone 타입 요구)
                 created_utc_value = None
                 if link.get('created_utc'):
                     try:
                         created_utc = link['created_utc']
-                        # Unix timestamp(숫자)인 경우
+                        # Unix timestamp(숫자)인 경우 - ISO 문자열로 변환
                         if isinstance(created_utc, (int, float)):
-                            # Unix timestamp를 ISO 문자열로 변환하여 저장
                             dt = datetime.fromtimestamp(created_utc)
                             created_utc_value = dt.isoformat()
-                        # ISO 문자열인 경우
+                        # ISO 문자열인 경우 - 그대로 사용
                         elif isinstance(created_utc, str):
-                            # 그대로 저장
-                            created_utc_value = created_utc
+                            # 이미 ISO 형식인지 확인
+                            try:
+                                datetime.fromisoformat(created_utc.replace('Z', '+00:00'))
+                                created_utc_value = created_utc
+                            except:
+                                # 파싱 가능한 날짜 문자열인 경우
+                                from dateutil.parser import parse
+                                dt = parse(created_utc)
+                                created_utc_value = dt.isoformat()
                         else:
                             logger.warning(f"지원하지 않는 created_utc 형식: {type(created_utc)} - {created_utc}")
                     except Exception as e:
@@ -153,7 +159,7 @@ class DatabaseService:
                     'title': link.get('title', ''),
                     'score': int(link.get('score', 0)) if link.get('score') is not None else 0,
                     'comments': int(link.get('comments', 0)) if link.get('comments') is not None else 0,
-                    'created_utc': created_utc_value,  # ISO 문자열로 저장
+                    'created_utc': created_utc_value,  # ISO timestamp 문자열로 저장
                     'subreddit': link.get('subreddit', ''),
                     'author': link.get('author', ''),
                     'position_in_report': link.get('position_in_report'),
