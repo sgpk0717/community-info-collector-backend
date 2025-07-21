@@ -8,12 +8,14 @@ router = APIRouter()
 
 @router.get("/logs/tail")
 async def tail_logs(
-    lines: int = Query(default=100, ge=1, le=10000, description="읽을 로그 라인 수")
+    lines: int = Query(default=100, ge=1, le=10000, description="읽을 로그 라인 수"),
+    offset: int = Query(default=0, ge=0, description="끝에서부터의 오프셋 (0이면 가장 최신)")
 ):
     """
     최신 로그 파일의 마지막 n개 라인을 반환합니다.
     
     - **lines**: 읽을 로그 라인 수 (1-10000)
+    - **offset**: 끝에서부터의 오프셋 (0이면 가장 최신)
     """
     try:
         # 로그 디렉토리 확인
@@ -30,15 +32,36 @@ async def tail_logs(
         log_files.sort()
         latest_log = log_files[-1]
         
-        # tail 구현 - 마지막 n개 라인 읽기
+        # 전체 파일을 라인 단위로 읽기
         with open(latest_log, 'r', encoding='utf-8') as file:
-            # deque를 사용하여 효율적으로 마지막 n개 라인만 유지
-            tail_lines = deque(file, maxlen=lines)
+            all_lines = file.readlines()
+        
+        # offset과 lines를 고려하여 적절한 범위 선택
+        total_lines = len(all_lines)
+        
+        # 끝에서부터 offset 위치 계산
+        end_index = total_lines - offset
+        start_index = max(0, end_index - lines)
+        
+        # 범위 체크
+        if start_index >= total_lines:
+            return {
+                "filename": os.path.basename(latest_log),
+                "lines": 0,
+                "offset": offset,
+                "total_lines": total_lines,
+                "content": []
+            }
+        
+        # 선택된 라인들 반환
+        selected_lines = all_lines[start_index:end_index]
         
         return {
             "filename": os.path.basename(latest_log),
-            "lines": lines,
-            "content": list(tail_lines)
+            "lines": len(selected_lines),
+            "offset": offset,
+            "total_lines": total_lines,
+            "content": [line.rstrip() for line in selected_lines]
         }
         
     except FileNotFoundError:
