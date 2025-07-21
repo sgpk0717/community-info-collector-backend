@@ -3,6 +3,7 @@ from app.services.reddit_service import RedditService
 from app.services.llm_service import LLMService
 from app.services.database_service import DatabaseService
 from app.services.relevance_filtering_service import RelevanceFilteringService
+from app.services.topic_clustering_service import TopicClusteringService
 from app.schemas.search import SearchRequest, ReportLength, TimeFilter
 from app.schemas.report import ReportCreate
 import logging
@@ -18,6 +19,7 @@ class AnalysisService:
         self.reddit_service = RedditService(thread_pool=thread_pool)
         self.llm_service = LLMService(api_semaphore=api_semaphore)
         self.relevance_service = RelevanceFilteringService(thread_pool=thread_pool, api_semaphore=api_semaphore)
+        self.clustering_service = TopicClusteringService(thread_pool=thread_pool, api_semaphore=api_semaphore)
         self.db_service = DatabaseService()
         self.thread_pool = thread_pool
         self.api_semaphore = api_semaphore
@@ -153,8 +155,43 @@ class AnalysisService:
                 filtered_comments = [item for item in filtered_content if item['type'] == 'comment']
                 logger.info(f"📝 고품질 댓글: {len(filtered_comments)}개 (향후 분석 활용 예정)")
                 
+                # 4단계: 주제별 클러스터링
                 if progress_callback:
-                    await progress_callback(f"고품질 게시물 {len(filtered_posts)}개 + 댓글 {len(filtered_comments)}개 선별", 50)
+                    await progress_callback("주제별 분류 중", 55)
+                
+                logger.info("🎯 주제별 클러스터링 시작...")
+                clustering_result = await self.clustering_service.cluster_content(
+                    content_items=filtered_content,
+                    query=request.query
+                )
+                
+                # 클러스터링 결과 요약
+                cluster_summary = self.clustering_service.get_cluster_summary(clustering_result['clusters'])
+                logger.info(f"✅ 클러스터링 완료:\n{cluster_summary}")
+                
+                # 클러스터링 결과 저장 (보고서 생성 시 사용)
+                self._last_clustering_result = clustering_result
+                
+                # 클러스터 정보를 게시물에 추가
+                cluster_mapping = {}
+                for cluster_idx, cluster in enumerate(clustering_result['clusters']):
+                    for item in cluster['items']:
+                        cluster_mapping[item.get('id')] = {
+                            'cluster_idx': cluster_idx,
+                            'cluster_name': cluster['topic']['name'],
+                            'cluster_description': cluster['topic']['description']
+                        }
+                
+                # 게시물에 클러스터 정보 추가
+                for idx, post in enumerate(all_posts):
+                    post_id = post['id']
+                    if post_id in cluster_mapping:
+                        post_cluster_info = cluster_mapping[post_id]
+                        all_posts[idx]['cluster_idx'] = post_cluster_info['cluster_idx']
+                        all_posts[idx]['cluster_name'] = post_cluster_info['cluster_name']
+                
+                if progress_callback:
+                    await progress_callback(f"{len(clustering_result['clusters'])}개 주제로 분류 완료", 60)
             
             # 날짜 범위에 따른 게시물 필터링
             if request.time_filter:
@@ -179,13 +216,23 @@ class AnalysisService:
             
             # 4. AI 분석 및 보고서 생성
             if progress_callback:
-                await progress_callback("AI 분석 중", 60)
+                await progress_callback("AI 분석 중", 70)
             
             logger.info(f"🤖 AI 분석 및 보고서 생성 시작 ({len(unique_posts)}개 게시물)")
+            
+            # 클러스터 정보 추가 (있는 경우)
+            cluster_info = None
+            if hasattr(self, '_last_clustering_result') and self._last_clustering_result:
+                cluster_info = {
+                    'clusters': self._last_clustering_result.get('clusters', []),
+                    'statistics': self._last_clustering_result.get('statistics', {})
+                }
+            
             report_data = await self.llm_service.generate_report(
                 posts=unique_posts,
                 query=request.query,
-                length=request.length
+                length=request.length,
+                cluster_info=cluster_info
             )
             
             if progress_callback:

@@ -158,7 +158,7 @@ class LLMService:
             logger.error(f"   Stack trace:\n{traceback.format_exc()}")
             return []  # 실패해도 계속 진행
     
-    async def generate_report(self, posts: List[Dict[str, Any]], query: str, length: ReportLength) -> Dict[str, Any]:
+    async def generate_report(self, posts: List[Dict[str, Any]], query: str, length: ReportLength, cluster_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """수집된 게시물을 바탕으로 분석 보고서 생성"""
         try:
             logger.info(f"📝 보고서 생성 시작 - 키워드: '{query}', 길이: {length.value}, 게시물 수: {len(posts)}")
@@ -167,6 +167,12 @@ class LLMService:
             posts_text = self._format_posts_for_prompt(posts[:30])  # 최대 30개 게시물
             logger.info(f"📄 게시물 포맷팅 완료 - {min(len(posts), 30)}개 게시물 사용")
             
+            # 클러스터 정보 포맷팅
+            cluster_text = ""
+            if cluster_info and cluster_info.get('clusters'):
+                cluster_text = self._format_cluster_info(cluster_info)
+                logger.info(f"🎯 클러스터 정보 포함 - {len(cluster_info['clusters'])}개 주제")
+            
             # 보고서 길이에 따른 프롬프트 조정
             length_guide = {
                 ReportLength.simple: "각 섹션을 1-2 단락으로 간결하게",
@@ -174,10 +180,20 @@ class LLMService:
                 ReportLength.detailed: "각 섹션을 3-5 단락으로 매우 상세하게, 구체적인 사례와 인용을 풍부하게 포함"
             }
             
+            # 클러스터 정보가 있으면 프롬프트에 포함
+            cluster_section = ""
+            if cluster_text:
+                cluster_section = f"""
+주제별 분류 정보:
+{cluster_text}
+
+위의 주제별 분류를 참고하여 보고서를 구조화해주세요.
+"""
+            
             prompt = f"""You are a professional community analyst. The following are social media posts collected with the keyword '{query}'.
 
 {posts_text}
-
+{cluster_section}
 Based on this English data, create a HIGHLY DETAILED analysis report in KOREAN following these guidelines:
 
 Report Length: {length_guide[length]}
@@ -423,3 +439,36 @@ POST_ID: {post['id']}
             max_tokens=4000
         )
         return response.content
+    
+    def _format_cluster_info(self, cluster_info: Dict[str, Any]) -> str:
+        """클러스터 정보를 프롬프트용으로 포맷팅"""
+        clusters = cluster_info.get('clusters', [])
+        statistics = cluster_info.get('statistics', {})
+        
+        if not clusters:
+            return ""
+        
+        formatted_lines = ["식별된 주요 주제:"]
+        
+        for idx, cluster in enumerate(clusters, 1):
+            topic = cluster['topic']
+            item_count = len(cluster['items'])
+            avg_relevance = cluster.get('average_relevance', 0)
+            
+            formatted_lines.append(f"\n{idx}. {topic['name']} ({item_count}개 콘텐츠, 평균 관련성: {avg_relevance:.1f}/10)")
+            formatted_lines.append(f"   - 설명: {topic['description']}")
+            
+            # 핵심 인사이트 포함
+            if cluster.get('key_insights'):
+                formatted_lines.append("   - 주요 콘텐츠:")
+                for insight in cluster['key_insights'][:2]:
+                    formatted_lines.append(f"     • {insight['title'][:60]}... (점수: {insight['score']})")
+        
+        # 통계 정보 추가
+        if statistics:
+            formatted_lines.append(f"\n전체 통계:")
+            formatted_lines.append(f"- 총 콘텐츠: {statistics.get('total_items', 0)}개")
+            formatted_lines.append(f"- 클러스터된 콘텐츠: {statistics.get('total_clustered', 0)}개")
+            formatted_lines.append(f"- 평균 클러스터 크기: {statistics.get('average_cluster_size', 0):.1f}개")
+        
+        return "\n".join(formatted_lines)
