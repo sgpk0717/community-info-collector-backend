@@ -2,6 +2,7 @@ from typing import Dict, Any, List, Optional
 from app.services.reddit_service import RedditService
 from app.services.llm_service import LLMService
 from app.services.database_service import DatabaseService
+from app.services.relevance_filtering_service import RelevanceFilteringService
 from app.schemas.search import SearchRequest, ReportLength, TimeFilter
 from app.schemas.report import ReportCreate
 import logging
@@ -16,6 +17,7 @@ class AnalysisService:
     def __init__(self, thread_pool: Optional[ThreadPoolExecutor] = None, api_semaphore: Optional[asyncio.Semaphore] = None):
         self.reddit_service = RedditService(thread_pool=thread_pool)
         self.llm_service = LLMService(api_semaphore=api_semaphore)
+        self.relevance_service = RelevanceFilteringService(thread_pool=thread_pool, api_semaphore=api_semaphore)
         self.db_service = DatabaseService()
         self.thread_pool = thread_pool
         self.api_semaphore = api_semaphore
@@ -112,7 +114,26 @@ class AnalysisService:
                 
                 logger.info(f"📊 수집 완료 - 게시물: {len(posts_only)}개, 댓글: {len(comments_only)}개")
                 
-                # 기존 형식으로 변환 (게시물만)
+                # 3단계: 관련성 필터링 적용
+                if progress_callback:
+                    await progress_callback("관련성 필터링 중", 45)
+                
+                logger.info("🔍 관련성 필터링 시작...")
+                filtered_content = await self.relevance_service.filter_relevant_content(
+                    content_items=all_content,
+                    query=request.query,
+                    expanded_keywords=expanded_keywords
+                )
+                
+                # 필터링 결과 요약
+                filtering_summary = await self.relevance_service.get_filtering_summary(filtered_content)
+                logger.info(f"✅ 관련성 필터링 완료:")
+                logger.info(f"   원본: {len(all_content)}개 → 필터링 후: {filtering_summary['total_count']}개")
+                logger.info(f"   고품질 콘텐츠: {filtering_summary['high_quality_count']}개")
+                logger.info(f"   평균 관련성 점수: {filtering_summary['average_score']:.1f}/10")
+                
+                # 필터링된 게시물만 추출하여 기존 형식으로 변환
+                filtered_posts = [item for item in filtered_content if item['type'] == 'post']
                 all_posts.extend([{
                     'id': item['id'],
                     'title': item['title'],
@@ -123,14 +144,17 @@ class AnalysisService:
                     'author': item['author'],
                     'url': item['url'],
                     'num_comments': item['num_comments'],
-                    'keyword_source': item['keyword_source']
-                } for item in posts_only])
+                    'keyword_source': item['keyword_source'],
+                    'relevance_score': item.get('relevance_score', 5.0),  # 관련성 점수 추가
+                    'relevance_reason': item.get('relevance_reason', '')  # 관련성 이유 추가
+                } for item in filtered_posts])
                 
-                # TODO: 댓글 데이터를 나중에 분석에 활용할 수 있도록 저장
-                # 현재는 게시물만 분석하지만, 3단계에서 댓글도 함께 분석하도록 개선 예정
+                # 필터링된 댓글도 저장 (향후 분석에 활용)
+                filtered_comments = [item for item in filtered_content if item['type'] == 'comment']
+                logger.info(f"📝 고품질 댓글: {len(filtered_comments)}개 (향후 분석 활용 예정)")
                 
                 if progress_callback:
-                    await progress_callback(f"Reddit에서 게시물 {len(posts_only)}개 + 댓글 {len(comments_only)}개 수집", 50)
+                    await progress_callback(f"고품질 게시물 {len(filtered_posts)}개 + 댓글 {len(filtered_comments)}개 선별", 50)
             
             # 날짜 범위에 따른 게시물 필터링
             if request.time_filter:

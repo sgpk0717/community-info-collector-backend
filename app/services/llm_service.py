@@ -140,7 +140,7 @@ class LLMService:
                 
                 keywords = json.loads(content)
                 if isinstance(keywords, list):
-                    result = keywords[:5]  # 최대 5개
+                    result = keywords  # 전체 사용 (제한 해제)
                     logger.info(f"✅ 키워드 확장 완료: {len(result)}개 - {result}")
                     return result
             except json.JSONDecodeError:
@@ -318,12 +318,17 @@ Remember: This is a DETAILED analytical report, not a summary. Include as much r
             rumor_score = post.get('rumor_score', 0)
             linguistic_flags = post.get('linguistic_flags', [])
             
+            # 관련성 점수 정보 추가
+            relevance_score = post.get('relevance_score', 0)
+            relevance_reason = post.get('relevance_reason', '평가 없음')
+            
             post_text = f"""[게시물 {i}]
 POST_ID: {post['id']}
 제목: {post['title']}
-점수: {post['score']} | 댓글: {post['num_comments']} | 루머점수: {rumor_score}/10
+점수: {post['score']} | 댓글: {post['num_comments']} | 루머점수: {rumor_score}/10 | 관련성: {relevance_score}/10
 서브레딧: r/{post['subreddit']} | 수집벡터: {vector_info}
 언어신호: {', '.join(linguistic_flags) if linguistic_flags else '없음'}
+관련성이유: {relevance_reason}
 내용: {post['selftext'][:200] if post['selftext'] else '(내용 없음)'}
 ---"""
             formatted_posts.append(post_text)
