@@ -88,28 +88,49 @@ class AnalysisService:
             
             all_posts = []
             
-            # Reddit 검색 (영어 키워드 사용)
+            # Reddit 검색 (게시물 + 댓글 함께 수집)
             if "reddit" in request.sources:
-                logger.info(f"🔍 Reddit 검색 시작: '{english_query}' (시간 필터: {reddit_time_filter})")
+                logger.info(f"🔍 Reddit 게시물+댓글 검색 시작: '{english_query}' (시간 필터: {reddit_time_filter})")
                 
-                # 영어 키워드로 검색
-                posts = await self.reddit_service.search_posts(english_query, limit=30, time_filter=reddit_time_filter)
-                all_posts.extend(posts)
+                # 확장된 키워드가 있으면 함께 사용, 없으면 원본 키워드만 사용
+                keywords_to_search = [english_query]
+                if expanded_keywords:
+                    keywords_to_search.extend(expanded_keywords)
+                
+                logger.info(f"📈 총 {len(keywords_to_search)}개 키워드로 게시물+댓글 수집")
+                
+                # 게시물과 댓글을 함께 수집
+                all_content = await self.reddit_service.collect_posts_with_comments(
+                    keywords=keywords_to_search,
+                    max_comments_per_post=8,  # 게시물당 최대 8개 댓글
+                    posts_limit=15  # 키워드당 최대 15개 게시물
+                )
+                
+                # 게시물과 댓글을 분리
+                posts_only = [item for item in all_content if item['type'] == 'post']
+                comments_only = [item for item in all_content if item['type'] == 'comment']
+                
+                logger.info(f"📊 수집 완료 - 게시물: {len(posts_only)}개, 댓글: {len(comments_only)}개")
+                
+                # 기존 형식으로 변환 (게시물만)
+                all_posts.extend([{
+                    'id': item['id'],
+                    'title': item['title'],
+                    'selftext': item['content'],
+                    'score': item['score'],
+                    'created_utc': item['created_utc'],
+                    'subreddit': item['subreddit'],
+                    'author': item['author'],
+                    'url': item['url'],
+                    'num_comments': item['num_comments'],
+                    'keyword_source': item['keyword_source']
+                } for item in posts_only])
+                
+                # TODO: 댓글 데이터를 나중에 분석에 활용할 수 있도록 저장
+                # 현재는 게시물만 분석하지만, 3단계에서 댓글도 함께 분석하도록 개선 예정
                 
                 if progress_callback:
-                    await progress_callback(f"Reddit에서 {len(posts)}개 게시물 수집", 40)
-                
-                # 확장된 키워드로 추가 검색
-                if expanded_keywords:
-                    logger.info(f"📈 확장된 키워드로 추가 검색 시작 ({len(expanded_keywords)}개 키워드)")
-                    additional_posts = await self.reddit_service.search_with_keywords(
-                        expanded_keywords, 
-                        limit_per_keyword=10
-                    )
-                    all_posts.extend(additional_posts)
-                    
-                    if progress_callback:
-                        await progress_callback(f"총 {len(all_posts)}개 게시물 수집 완료", 50)
+                    await progress_callback(f"Reddit에서 게시물 {len(posts_only)}개 + 댓글 {len(comments_only)}개 수집", 50)
             
             # 날짜 범위에 따른 게시물 필터링
             if request.time_filter:
@@ -159,15 +180,17 @@ class AnalysisService:
                 'sample_titles': [p['title'] for p in unique_posts[:3]]
             })
             
-            # 확장된 키워드 정보 추가
+            # 확장된 키워드 정보 추가 (전체 사용)
             if expanded_keywords:
-                for kw in expanded_keywords[:5]:  # 최대 5개까지만
-                    keywords_used.append({
-                        'keyword': kw,
-                        'translated_keyword': None,  # 이미 영어
-                        'posts_found': len([p for p in unique_posts if kw.lower() in p.get('title', '').lower() or kw.lower() in p.get('selftext', '').lower()]),
-                        'sample_titles': []
-                    })
+                for kw in expanded_keywords:  # 전체 확장 키워드 사용
+                    posts_found_count = len([p for p in unique_posts if kw.lower() in p.get('title', '').lower() or kw.lower() in p.get('selftext', '').lower()])
+                    if posts_found_count > 0:  # 실제로 게시물이 발견된 키워드만 저장
+                        keywords_used.append({
+                            'keyword': kw,
+                            'translated_keyword': None,  # 이미 영어
+                            'posts_found': posts_found_count,
+                            'sample_titles': [p['title'] for p in unique_posts if kw.lower() in p.get('title', '').lower()][:2]  # 샘플 2개만
+                        })
             
             report_create = ReportCreate(
                 user_nickname=request.user_nickname,
