@@ -340,13 +340,13 @@ Remember: This is a DETAILED analytical report, not a summary. Include as much r
             relevance_reason = post.get('relevance_reason', '평가 없음')
             
             post_text = f"""[게시물 {i}]
-POST_ID: {post['id']}
-제목: {post['title']}
-점수: {post['score']} | 댓글: {post['num_comments']} | 루머점수: {rumor_score}/10 | 관련성: {relevance_score}/10
-서브레딧: r/{post['subreddit']} | 수집벡터: {vector_info}
+POST_ID: {post.get('id', 'unknown')}
+제목: {post.get('title', '제목 없음')}
+점수: {post.get('score', 0)} | 댓글: {post.get('num_comments', 0)} | 루머점수: {rumor_score}/10 | 관련성: {relevance_score}/10
+서브레딧: r/{post.get('subreddit', 'unknown')} | 수집벡터: {vector_info}
 언어신호: {', '.join(linguistic_flags) if linguistic_flags else '없음'}
 관련성이유: {relevance_reason}
-내용: {post['selftext'][:200] if post['selftext'] else '(내용 없음)'}
+내용: {post.get('selftext', '')[:200] if post.get('selftext') else '(내용 없음)'}
 ---"""
             formatted_posts.append(post_text)
         
@@ -378,21 +378,21 @@ POST_ID: {post['id']}
                 ref_to_footnote[ref] = len(unique_refs)
         
         # 각 고유한 참조에 대해 게시물 정보 찾기
-        posts_by_id = {post['id']: post for post in posts}
+        posts_by_id = {post.get('id'): post for post in posts if post.get('id')}
         
         for post_id, footnote_number in ref_to_footnote.items():
             if post_id in posts_by_id:
                 post = posts_by_id[post_id]
                 footnote_mapping.append({
                     "footnote_number": footnote_number,
-                    "post_id": post['id'],
-                    "url": post['url'],
-                    "title": post['title'],
-                    "score": post['score'],
-                    "comments": post['num_comments'],
-                    "created_utc": post['created_utc'],
-                    "subreddit": post['subreddit'],
-                    "author": post['author'],
+                    "post_id": post.get('id', ''),
+                    "url": post.get('url', ''),
+                    "title": post.get('title', ''),
+                    "score": post.get('score', 0),
+                    "comments": post.get('num_comments', 0),
+                    "created_utc": post.get('created_utc', ''),
+                    "subreddit": post.get('subreddit', ''),
+                    "author": post.get('author', ''),
                     "position_in_report": footnote_number
                 })
             else:

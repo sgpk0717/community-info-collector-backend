@@ -236,7 +236,7 @@ class OrchestratorService:
                     all_posts.append(item)
         
         # 중복 제거 및 정렬
-        unique_posts = {post['id']: post for post in all_posts}.values()
+        unique_posts = {post.get('id'): post for post in all_posts if post.get('id')}.values()
         sorted_posts = sorted(unique_posts, key=lambda x: x.get('relevance_score', 0), reverse=True)
         
         # LLM 서비스를 통한 보고서 생성 (각주 포함)
