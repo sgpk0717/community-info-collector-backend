@@ -101,9 +101,10 @@ class AnalysisService:
                 query_text=request.query,
                 summary=report_data['summary'],
                 full_report=report_data['full_report'],
-                posts_collected=metadata['filtered_count'],
+                posts_collected=metadata['total_collected'],
                 report_length=request.length.value,
                 session_id=request.session_id,
+                time_filter=request.time_filter.value if request.time_filter else None,
                 keywords_used=keywords_used
             )
             

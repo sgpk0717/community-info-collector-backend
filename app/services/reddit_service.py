@@ -381,7 +381,7 @@ class RedditService:
         logger.info(f"✅ 다중 키워드 검색 완료: 총 {len(all_posts)}개 게시물 수집")
         return all_posts
     
-    async def collect_posts_with_comments(self, keywords: List[str], max_comments_per_post: int = 10, posts_limit: int = 20) -> List[Dict[str, Any]]:
+    async def collect_posts_with_comments(self, keywords: List[str], max_comments_per_post: int = 10, posts_limit: int = 20, time_filter: str = 'all') -> List[Dict[str, Any]]:
         """게시물과 댓글을 함께 수집"""
         logger.info(f"📄 게시물+댓글 수집 시작 - 키워드: {len(keywords)}개, 게시물당 댓글: {max_comments_per_post}개")
         
@@ -392,7 +392,7 @@ class RedditService:
                 await self._check_rate_limit()
                 
                 # 게시물 수집
-                posts = await self.search_posts(keyword, limit=posts_limit)
+                posts = await self.search_posts(keyword, limit=posts_limit, time_filter=time_filter)
                 logger.info(f"🔍 키워드 '{keyword}': {len(posts)}개 게시물 수집")
                 
                 for post in posts:

@@ -51,7 +51,8 @@ class OrchestratorService:
             
             collection_result = await self._collect_data_with_quality_check(
                 expanded_keywords, 
-                progress_callback
+                progress_callback,
+                request
             )
             
             # 3단계: 관련성 필터링
@@ -119,7 +120,8 @@ class OrchestratorService:
     async def _collect_data_with_quality_check(
         self, 
         keywords: List[str], 
-        progress_callback: Optional[Any] = None
+        progress_callback: Optional[Any] = None,
+        request: Optional[SearchRequest] = None
     ) -> Dict[str, Any]:
         """데이터 수집 및 품질 체크"""
         all_content = []
@@ -132,9 +134,26 @@ class OrchestratorService:
                 await progress_callback(f"'{keyword}' 수집 중", int(progress))
             
             # collect_posts_with_comments는 리스트를 반환함
+            # time_filter 받아서 전달
+            time_filter = 'all'
+            if request and request.time_filter:
+                # TimeFilter enum을 Reddit API 형식으로 변환
+                time_filter_map = {
+                    '1h': 'hour',
+                    '3h': 'hour',
+                    '6h': 'day',
+                    '12h': 'day',
+                    '1d': 'day',
+                    '3d': 'week',
+                    '1w': 'week',
+                    '1m': 'month'
+                }
+                time_filter = time_filter_map.get(request.time_filter.value, 'all')
+            
             content_items = await self.reddit_service.collect_posts_with_comments(
                 keywords=[keyword],  # keywords 파라미터로 변경
-                posts_limit=15  # posts_limit 파라미터명으로 변경
+                posts_limit=15,  # posts_limit 파라미터명으로 변경
+                time_filter=time_filter
             )
             
             # 키워드별 통계 정보 수집
