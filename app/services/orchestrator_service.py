@@ -82,7 +82,8 @@ class OrchestratorService:
                 clustering_result,
                 request.query,
                 request.length,
-                expanded_keywords
+                expanded_keywords,
+                time_filter=request.time_filter.value if request.time_filter else None
             )
             
             # 6단계: 품질 검증 및 개선
@@ -93,7 +94,8 @@ class OrchestratorService:
                 report, 
                 clustering_result=clustering_result,
                 query=request.query,
-                keywords=expanded_keywords
+                keywords=expanded_keywords,
+                time_filter=request.time_filter.value if request.time_filter else None
             )
             
             if progress_callback:
@@ -243,7 +245,8 @@ class OrchestratorService:
         clustering_result: Dict[str, Any],
         query: str,
         length: ReportLength,
-        keywords: List[str]
+        keywords: List[str],
+        time_filter: Optional[str] = None
     ) -> Dict[str, Any]:
         """통합 품질 보고서 생성 - 각주 시스템 포함"""
         
@@ -263,7 +266,8 @@ class OrchestratorService:
                 posts=list(sorted_content),
                 query=query,
                 length=length,
-                cluster_info=clustering_result
+                cluster_info=clustering_result,
+                time_filter=time_filter
             )
             
             # 보고서 파싱
@@ -283,7 +287,8 @@ class OrchestratorService:
     async def _quality_assurance(self, report: Dict[str, Any], 
                                clustering_result: Dict[str, Any] = None,
                                query: str = None,
-                               keywords: List[str] = None) -> Dict[str, Any]:
+                               keywords: List[str] = None,
+                               time_filter: Optional[str] = None) -> Dict[str, Any]:
         """최종 품질 보증 및 개선"""
         
         # 1. 중복 내용 제거
@@ -303,7 +308,8 @@ class OrchestratorService:
                 completeness['missing'],
                 clustering_result=clustering_result,
                 query=query,
-                keywords=keywords
+                keywords=keywords,
+                time_filter=time_filter
             )
             # 개선된 보고서에서 summary와 full_report 확인
             return {
@@ -548,7 +554,7 @@ class OrchestratorService:
     
     async def _improve_report(self, report: Dict[str, Any], missing_sections: List[str], 
                            clustering_result: Dict[str, Any] = None, query: str = None, 
-                           keywords: List[str] = None) -> Dict[str, Any]:
+                           keywords: List[str] = None, time_filter: Optional[str] = None) -> Dict[str, Any]:
         """보고서 개선 - 원본 데이터를 활용한 종합적 개선"""
         
         # 기존 섹션들의 내용 보존 (임시 비활성화 - 빈 내용 문제 해결)
@@ -576,12 +582,28 @@ class OrchestratorService:
                     else:
                         cluster_info += f"  - 댓글: {item.get('content', '')[:60]}...\n"
         
+        # 시간 필터 정보 추가
+        time_filter_text = ""
+        if time_filter:
+            time_filter_map = {
+                '1h': '최근 1시간',
+                '3h': '최근 3시간', 
+                '6h': '최근 6시간',
+                '12h': '최근 12시간',
+                '1d': '최근 24시간(1일)',
+                '3d': '최근 3일',
+                '1w': '최근 1주일',
+                '1m': '최근 1개월'
+            }
+            time_period = time_filter_map.get(time_filter, '전체 기간')
+            time_filter_text = f"\n분석 기간: {time_period} (⚠️ 보고서에서 이 기간을 정확히 명시해주세요)"
+        
         improvement_prompt = f"""당신은 10년 경력의 전문 커뮤니티 분석가입니다. 
 여러 분석가들이 작성한 개별 분석들을 종합하여, 전체적인 관점에서만 볼 수 있는 통찰과 함께 
 포괄적이고 심층적인 최종 보고서를 작성해주세요.
 
 분석 주제: {query or ''}
-관련 키워드: {', '.join(keywords[:5]) if keywords else ''}
+관련 키워드: {', '.join(keywords[:5]) if keywords else ''}{time_filter_text}
 
 === 원본 데이터 정보 ===
 {cluster_info}

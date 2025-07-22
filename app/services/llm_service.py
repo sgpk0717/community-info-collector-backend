@@ -160,7 +160,7 @@ class LLMService:
             # 오류 발생 시 예외를 전파
             raise Exception(f"키워드 확장 실패: {str(e)}")
     
-    async def generate_report(self, posts: List[Dict[str, Any]], query: str, length: ReportLength, cluster_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def generate_report(self, posts: List[Dict[str, Any]], query: str, length: ReportLength, cluster_info: Optional[Dict[str, Any]] = None, time_filter: Optional[str] = None) -> Dict[str, Any]:
         """수집된 게시물을 바탕으로 분석 보고서 생성"""
         try:
             logger.info(f"📝 보고서 생성 시작 - 키워드: '{query}', 길이: {length.value}, 게시물 수: {len(posts)}")
@@ -192,7 +192,23 @@ class LLMService:
 위의 주제별 분류를 참고하여 보고서를 구조화해주세요.
 """
             
-            prompt = f"""You are a professional community analyst. The following are social media posts collected with the keyword '{query}'.
+            # 시간 필터 정보 추가
+            time_filter_text = ""
+            if time_filter:
+                time_filter_map = {
+                    '1h': '최근 1시간',
+                    '3h': '최근 3시간',
+                    '6h': '최근 6시간',
+                    '12h': '최근 12시간',
+                    '1d': '최근 24시간(1일)',
+                    '3d': '최근 3일',
+                    '1w': '최근 1주일',
+                    '1m': '최근 1개월'
+                }
+                time_period = time_filter_map.get(time_filter, '전체 기간')
+                time_filter_text = f"\n\n⚠️ 중요: 모든 분석은 {time_period} 동안의 데이터를 기반으로 합니다. 보고서에서 '최근 2주간' 같은 잘못된 기간 표현을 사용하지 마세요. 반드시 '{time_period}' 또는 적절한 시간 표현을 사용하세요."
+            
+            prompt = f"""You are a professional community analyst. The following are social media posts collected with the keyword '{query}'.{time_filter_text}
 
 {posts_text}
 {cluster_section}
