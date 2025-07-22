@@ -88,7 +88,12 @@ class OrchestratorService:
             if progress_callback:
                 await progress_callback("품질 검증 중", 85)
             
-            final_report = await self._quality_assurance(report)
+            final_report = await self._quality_assurance(
+                report, 
+                clustering_result=clustering_result,
+                query=request.query,
+                keywords=expanded_keywords
+            )
             
             if progress_callback:
                 await progress_callback("분석 완료", 100)
@@ -241,7 +246,10 @@ class OrchestratorService:
             logger.error(f"보고서 생성 실패: {str(e)}")
             raise
     
-    async def _quality_assurance(self, report: Dict[str, Any]) -> Dict[str, Any]:
+    async def _quality_assurance(self, report: Dict[str, Any], 
+                               clustering_result: Dict[str, Any] = None,
+                               query: str = None,
+                               keywords: List[str] = None) -> Dict[str, Any]:
         """최종 품질 보증 및 개선"""
         
         # 1. 중복 내용 제거
@@ -256,7 +264,13 @@ class OrchestratorService:
         # 4. 개선이 필요한 경우 재생성
         if consistency_score < 0.7 or not completeness['is_complete']:
             logger.info("📝 품질 개선을 위한 보고서 재생성")
-            improved_report = await self._improve_report(report, completeness['missing'])
+            improved_report = await self._improve_report(
+                report, 
+                completeness['missing'],
+                clustering_result=clustering_result,
+                query=query,
+                keywords=keywords
+            )
             # 개선된 보고서에서 summary와 full_report 확인
             return {
                 'summary': improved_report.get('summary', self._extract_summary(improved_report.get('full_report', ''))),
@@ -339,7 +353,8 @@ class OrchestratorService:
 ## 2. 주요 주제 분석
 - 위에서 분류된 각 주제별로 섹션 구성
 - 각 주제의 핵심 논점과 여론 정리
-- 구체적인 사례와 인용 포함
+- 각 주제마다 최소 2-3개의 원문 인용 필수
+- 인용 형식: "원문 내용" (작성자: username, 추천: N)
 
 ## 3. 감성 분석
 - 전반적인 감성 분포 (긍정/부정/중립)
@@ -495,20 +510,110 @@ class OrchestratorService:
             'completeness_ratio': (len(required_sections) - len(missing_sections)) / len(required_sections)
         }
     
-    async def _improve_report(self, report: Dict[str, Any], missing_sections: List[str]) -> Dict[str, Any]:
-        """보고서 개선"""
-        # 누락된 섹션에 대한 추가 생성 프롬프트
-        improvement_prompt = f"""다음 보고서에서 누락된 섹션을 보완해주세요:
+    async def _improve_report(self, report: Dict[str, Any], missing_sections: List[str], 
+                           clustering_result: Dict[str, Any] = None, query: str = None, 
+                           keywords: List[str] = None) -> Dict[str, Any]:
+        """보고서 개선 - 원본 데이터를 활용한 종합적 개선"""
+        
+        # 기존 섹션들의 내용 보존
+        existing_sections = []
+        for section, content in report.get('sections', {}).items():
+            if content and section not in missing_sections:
+                existing_sections.append(f"### {section}\n{content}")
+        
+        # 클러스터 정보 재구성
+        cluster_info = ""
+        if clustering_result and 'clusters' in clustering_result:
+            for idx, cluster in enumerate(clustering_result['clusters'], 1):
+                cluster_info += f"\n클러스터 {idx} - {cluster['topic']['name']}:\n"
+                cluster_info += f"  설명: {cluster['topic']['description']}\n"
+                cluster_info += f"  콘텐츠 수: {len(cluster['items'])}개\n"
+                
+                # 상위 콘텐츠 예시
+                top_items = sorted(cluster['items'], 
+                                 key=lambda x: x.get('relevance_score', 0), 
+                                 reverse=True)[:2]
+                for item in top_items:
+                    if item['type'] == 'post':
+                        cluster_info += f"  - {item['title'][:60]}...\n"
+                    else:
+                        cluster_info += f"  - 댓글: {item.get('content', '')[:60]}...\n"
+        
+        improvement_prompt = f"""당신은 10년 경력의 전문 커뮤니티 분석가입니다. 
+여러 분석가들이 작성한 개별 분석들을 종합하여, 전체적인 관점에서만 볼 수 있는 통찰과 함께 
+포괄적이고 심층적인 최종 보고서를 작성해주세요.
 
-현재 보고서:
-{report['full_report']}
+분석 주제: {query or ''}
+관련 키워드: {', '.join(keywords[:5]) if keywords else ''}
 
-누락된 섹션: {', '.join(missing_sections)}
+=== 원본 데이터 정보 ===
+{cluster_info}
 
-위 섹션들을 추가하여 완성도 높은 보고서를 만들어주세요."""
+=== 기존에 작성된 개별 분석 내용들 (모두 포함하여 확장) ===
+{chr(10).join(existing_sections)}
+
+=== 보완이 필요한 섹션: {', '.join(missing_sections)} ===
+
+다음 지침에 따라 종합 보고서를 작성해주세요:
+
+1. **기존 분석 확장 및 심화**
+   - 개별 분석가들이 작성한 내용을 모두 포함하되, 더 깊이 있게 확장
+   - 각 주제별로 3-5개의 구체적인 원문을 반드시 인용
+   - 인용 형식: "원문 내용" (출처: 작성자명, 추천수)
+   
+2. **종합적 시각에서의 새로운 통찰**
+   - 개별 분석에서는 보이지 않았던 전체적인 패턴과 트렌드 파악
+   - 서로 다른 주제/클러스터 간의 연관성과 상호작용 분석
+   - 표면적으로 드러나지 않은 숨은 의미와 함의 도출
+   
+3. **구체적인 증거와 사례**
+   - 모든 주장은 실제 게시물/댓글의 원문 인용으로 뒷받침
+   - 통계적 수치와 비율을 구체적으로 제시
+   - "많은 사람들이"가 아닌 "전체 응답자의 65%가" 같은 정확한 표현
+   
+4. **상세하고 풍부한 내용**
+   - 각 섹션을 최소 3-4개 단락으로 구성
+   - 핵심 요약은 500자 이상
+   - 주요 주제 분석은 각 주제당 300-500자
+   - 전체 보고서는 3000-5000자 수준
+   
+5. **다층적 분석**
+   - 표면적 의견 → 근본 원인 → 잠재적 영향 순으로 분석
+   - 단기적 반응과 장기적 함의를 구분하여 제시
+   - 주류 의견과 소수 의견의 가치를 모두 평가
+
+최종 보고서 구조:
+
+## 1. 종합 요약 및 핵심 발견사항
+- 전체 데이터를 관통하는 핵심 메시지 3-5개
+- 가장 중요한 발견사항과 그 의미
+- 예상치 못한 통찰이나 역설적 발견
+
+## 2. 주제별 심층 분석
+- 각 주제마다 배경, 현황, 구체적 사례(원문 인용 필수), 의미 분석
+- 주제 간 연결고리와 상호 영향 관계
+- 각 주제별로 대표적인 원문 3-5개 인용
+
+## 3. 정서 및 여론 동향 분석
+- 정량적 감성 분포와 정성적 감정 분석
+- 감정 변화의 원인과 맥락
+- 특정 이슈에 대한 감정적 반응의 원문 예시
+
+## 4. 숨은 패턴과 통찰
+- 개별 분석에서 놓친 전체적 패턴
+- 약한 신호(weak signal)이지만 중요한 징후
+- 커뮤니티의 집단 무의식이나 암묵적 합의
+
+## 5. 전략적 함의와 제언
+- 분석 결과가 시사하는 바
+- 향후 예상되는 전개 방향
+- 구체적이고 실행 가능한 제언
+
+모든 섹션에서 구체적인 원문을 인용하고, 
+단순 나열이 아닌 서사적 흐름으로 작성해주세요."""
         
         try:
-            improved_response = await self.llm_service._call_llm(improvement_prompt, temperature=0.3)
+            improved_response = await self.llm_service._call_llm(improvement_prompt, temperature=0.5)
             improved_sections = self._parse_report_sections(improved_response)
             
             # 기존 섹션과 병합
