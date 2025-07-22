@@ -228,21 +228,20 @@ class OrchestratorService:
     ) -> Dict[str, Any]:
         """통합 품질 보고서 생성 - 각주 시스템 포함"""
         
-        # 모든 게시물 수집 (클러스터에서)
-        all_posts = []
+        # 모든 컨텐츠 수집 (게시물 + 댓글)
+        all_content = []
         for cluster in clustering_result['clusters']:
             for item in cluster['items']:
-                if item['type'] == 'post':
-                    all_posts.append(item)
+                all_content.append(item)
         
         # 중복 제거 및 정렬
-        unique_posts = {post.get('id'): post for post in all_posts if post.get('id')}.values()
-        sorted_posts = sorted(unique_posts, key=lambda x: x.get('relevance_score', 0), reverse=True)
+        unique_content = {item.get('id'): item for item in all_content if item.get('id')}.values()
+        sorted_content = sorted(unique_content, key=lambda x: x.get('relevance_score', 0), reverse=True)
         
         # LLM 서비스를 통한 보고서 생성 (각주 포함)
         try:
             report_result = await self.llm_service.generate_report(
-                posts=list(sorted_posts),
+                posts=list(sorted_content),
                 query=query,
                 length=length,
                 cluster_info=clustering_result

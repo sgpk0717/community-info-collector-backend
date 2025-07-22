@@ -6,6 +6,7 @@ import logging
 import json
 import os
 import asyncio
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +221,8 @@ Required sections (write all section headers and content in Korean):
 - 가장 많은 공감을 받은 의견 5-7개 상세 분석
 - **⚠️ 반드시 "영문 원문" (한국어 번역) 형식으로 인용**
 - 예시: "This is the future of AI" (이것이 AI의 미래입니다) [ref:123]
+- **댓글 인용 시**: 반드시 어떤 게시글에 달린 댓글인지 명시하고, 게시글의 제목과 핵심 내용도 함께 설명
+- 예시: "테슬라의 FSD가 왜 실패할 수밖에 없는가"라는 게시글에 달린 댓글: "LiDAR is essential" (LiDAR는 필수다) [ref:COMMENT_456]
 - 해당 의견이 주목받는 이유와 맥락 설명
 
 ## 5. 구체적인 사례와 인용 (Specific Examples)
@@ -326,27 +329,47 @@ Remember: This is a DETAILED analytical report, not a summary. Include as much r
             raise OpenAIAPIException(f"Failed to generate report: {str(e)}")
     
     def _format_posts_for_prompt(self, posts: List[Dict[str, Any]]) -> str:
-        """게시물을 프롬프트용으로 포맷팅"""
+        """게시물과 댓글을 프롬프트용으로 포맷팅"""
         formatted_posts = []
         
-        for i, post in enumerate(posts, 1):
+        # 게시물 ID로 매핑 생성 (댓글에서 부모 게시물 참조용)
+        posts_by_id = {p.get('id'): p for p in posts if p.get('type') == 'post' and p.get('id')}
+        
+        for i, item in enumerate(posts, 1):
             # 개선된 포맷팅에 루머 점수와 수집 벡터 정보 포함
-            vector_info = post.get('collection_vector', 'unknown')
-            rumor_score = post.get('rumor_score', 0)
-            linguistic_flags = post.get('linguistic_flags', [])
+            vector_info = item.get('collection_vector', 'unknown')
+            rumor_score = item.get('rumor_score', 0)
+            linguistic_flags = item.get('linguistic_flags', [])
             
             # 관련성 점수 정보 추가
-            relevance_score = post.get('relevance_score', 0)
-            relevance_reason = post.get('relevance_reason', '평가 없음')
+            relevance_score = item.get('relevance_score', 0)
+            relevance_reason = item.get('relevance_reason', '평가 없음')
             
-            post_text = f"""[게시물 {i}]
-POST_ID: {post.get('id', 'unknown')}
-제목: {post.get('title', '제목 없음')}
-점수: {post.get('score', 0)} | 댓글: {post.get('num_comments', 0)} | 루머점수: {rumor_score}/10 | 관련성: {relevance_score}/10
-서브레딧: r/{post.get('subreddit', 'unknown')} | 수집벡터: {vector_info}
+            if item.get('type') == 'comment':
+                # 댓글인 경우 부모 게시물 정보도 포함
+                parent_post_id = item.get('post_id') or item.get('parent_id')
+                parent_post = posts_by_id.get(parent_post_id, {})
+                
+                post_text = f"""[컨텐츠 {i} - 댓글]
+COMMENT_ID: {item.get('id', 'unknown')}
+부모 게시글 제목: {parent_post.get('title', '제목 없음')}
+부모 게시글 내용: {parent_post.get('selftext', '')[:100] if parent_post.get('selftext') else '(내용 없음)'}
+댓글 내용: {item.get('content', '')[:300]}
+댓글 추천수: {item.get('score', 0)} | 부모 게시글 추천수: {parent_post.get('score', 0)}
+서브레딧: r/{item.get('subreddit', 'unknown')}
+작성자: {item.get('author', 'unknown')}
+관련성: {relevance_score}/10 | 루머점수: {rumor_score}/10
+---"""
+            else:
+                # 게시물인 경우
+                post_text = f"""[컨텐츠 {i} - 게시물]
+POST_ID: {item.get('id', 'unknown')}
+제목: {item.get('title', '제목 없음')}
+점수: {item.get('score', 0)} | 댓글: {item.get('num_comments', 0)} | 루머점수: {rumor_score}/10 | 관련성: {relevance_score}/10
+서브레딧: r/{item.get('subreddit', 'unknown')} | 수집벡터: {vector_info}
 언어신호: {', '.join(linguistic_flags) if linguistic_flags else '없음'}
 관련성이유: {relevance_reason}
-내용: {post.get('selftext', '')[:200] if post.get('selftext') else '(내용 없음)'}
+내용: {item.get('selftext', '')[:200] if item.get('selftext') else '(내용 없음)'}
 ---"""
             formatted_posts.append(post_text)
         
@@ -383,6 +406,19 @@ POST_ID: {post.get('id', 'unknown')}
         for post_id, footnote_number in ref_to_footnote.items():
             if post_id in posts_by_id:
                 post = posts_by_id[post_id]
+                # created_utc를 Unix timestamp로 변환
+                created_utc = post.get('created_utc', '')
+                if created_utc and isinstance(created_utc, str):
+                    try:
+                        # ISO 형식 문자열을 datetime으로 파싱 후 Unix timestamp로 변환
+                        dt = datetime.fromisoformat(created_utc.replace('Z', '+00:00'))
+                        created_utc = dt.timestamp()
+                    except:
+                        # 이미 숫자형이거나 파싱 실패 시 원본 유지
+                        pass
+                elif not created_utc:
+                    created_utc = 0  # 빈 값은 0으로
+                
                 footnote_mapping.append({
                     "footnote_number": footnote_number,
                     "post_id": post.get('id', ''),
@@ -390,7 +426,7 @@ POST_ID: {post.get('id', 'unknown')}
                     "title": post.get('title', ''),
                     "score": post.get('score', 0),
                     "comments": post.get('num_comments', 0),
-                    "created_utc": post.get('created_utc', ''),
+                    "created_utc": created_utc,
                     "subreddit": post.get('subreddit', ''),
                     "author": post.get('author', ''),
                     "position_in_report": footnote_number
