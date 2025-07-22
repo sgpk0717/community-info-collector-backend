@@ -472,7 +472,7 @@ POST_ID: POST_{i}
                 })
             else:
                 logger.warning(f"⚠️ 참조된 POST_ID를 찾을 수 없음: {post_id}")
-                logger.debug(f"   사용 가능한 ID들: {list(posts_by_id.keys())[:10]}")
+                logger.debug(f"   사용 가능한 ID들: {list(posts_by_ref_id.keys())[:10]}")
         
         # 각주 번호순으로 정렬
         footnote_mapping.sort(key=lambda x: x['footnote_number'])
