@@ -533,11 +533,12 @@ class OrchestratorService:
                            keywords: List[str] = None) -> Dict[str, Any]:
         """보고서 개선 - 원본 데이터를 활용한 종합적 개선"""
         
-        # 기존 섹션들의 내용 보존
+        # 기존 섹션들의 내용 보존 (임시 비활성화 - 빈 내용 문제 해결)
         existing_sections = []
-        for section, content in report.get('sections', {}).items():
-            if content and section not in missing_sections:
-                existing_sections.append(f"### {section}\n{content}")
+        # TODO: 추후 기존 내용이 실제로 있을 때만 보존하도록 개선
+        # for section, content in report.get('sections', {}).items():
+        #     if content and content.strip() and section not in missing_sections:
+        #         existing_sections.append(f"### {section}\n{content}")
         
         # 클러스터 정보 재구성
         cluster_info = ""
