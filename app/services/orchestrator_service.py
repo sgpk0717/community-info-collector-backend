@@ -311,7 +311,7 @@ class OrchestratorService:
                 if item['type'] == 'post':
                     cluster_summary += f"- {item['title'][:80]}... (점수: {item.get('score', 0)})\n"
                 else:
-                    cluster_summary += f"- 댓글: {item['body'][:80]}... (추천: {item.get('score', 0)})\n"
+                    cluster_summary += f"- 댓글: {item.get('content', '')[:80]}... (추천: {item.get('score', 0)})\n"
             
             cluster_summaries.append(cluster_summary)
         
