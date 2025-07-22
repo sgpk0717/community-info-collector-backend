@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional, Literal
+from typing import List, Dict, Any, Optional, Literal, Tuple
 from app.core.exceptions import OpenAIAPIException
 from app.schemas.search import ReportLength
 from app.services.llm_providers import BaseLLMProvider, OpenAIProvider, GeminiProvider
@@ -165,9 +165,10 @@ class LLMService:
         try:
             logger.info(f"📝 보고서 생성 시작 - 키워드: '{query}', 길이: {length.value}, 게시물 수: {len(posts)}")
             
-            # 게시물 정보 포맷팅
-            posts_text = self._format_posts_for_prompt(posts[:30])  # 최대 30개 게시물
+            # 게시물 정보 포맷팅 (인덱스 매핑과 함께)
+            posts_text, index_mapping = self._format_posts_for_prompt(posts[:30])  # 최대 30개 게시물
             logger.info(f"📄 게시물 포맷팅 완료 - {min(len(posts), 30)}개 게시물 사용")
+            self._index_mapping = index_mapping  # 나중에 각주 처리에 사용할 매핑 저장
             
             # 클러스터 정보 포맷팅
             cluster_text = ""
@@ -307,8 +308,8 @@ Remember: This is a DETAILED analytical report, not a summary. Include as much r
             full_report = response.content
             logger.info(f"✅ {self.provider.provider_name} API 응답 수신 - 보고서 길이: {len(full_report)} 문자")
             
-            # 각주 매핑 추출 (변환 전)
-            footnote_mapping = self._extract_footnote_mapping(full_report, posts)
+            # 각주 매핑 추출 (변환 전) - 인덱스 매핑 사용
+            footnote_mapping = self._extract_footnote_mapping(full_report, posts, self._index_mapping)
             
             # [ref:POST_ID]를 번호로 변환
             logger.info("🔄 각주 변환 시작...")
@@ -344,9 +345,10 @@ Remember: This is a DETAILED analytical report, not a summary. Include as much r
             logger.error(f"{self.provider.provider_name} API error in generate_report: {str(e)}")
             raise OpenAIAPIException(f"Failed to generate report: {str(e)}")
     
-    def _format_posts_for_prompt(self, posts: List[Dict[str, Any]]) -> str:
-        """게시물과 댓글을 프롬프트용으로 포맷팅"""
+    def _format_posts_for_prompt(self, posts: List[Dict[str, Any]]) -> Tuple[str, Dict[int, Dict[str, Any]]]:
+        """게시물과 댓글을 프롬프트용으로 포맷팅 (인덱스 매핑과 함께 반환)"""
         formatted_posts = []
+        index_to_post = {}  # 인덱스 -> 게시물 매핑
         
         # 게시물 ID로 매핑 생성 (댓글에서 부모 게시물 참조용)
         posts_by_id = {p.get('id'): p for p in posts if p.get('type') == 'post' and p.get('id')}
@@ -366,8 +368,9 @@ Remember: This is a DETAILED analytical report, not a summary. Include as much r
                 parent_post_id = item.get('post_id') or item.get('parent_id')
                 parent_post = posts_by_id.get(parent_post_id, {})
                 
+                # ID 포맷 수정: 컨텐츠 번호를 COMMENT_ID로 사용
                 post_text = f"""[컨텐츠 {i} - 댓글]
-COMMENT_ID: {item.get('id', 'unknown')}
+COMMENT_ID: COMMENT_{i}
 부모 게시글 제목: {parent_post.get('title', '제목 없음')}
 부모 게시글 내용: {parent_post.get('selftext', '')[:100] if parent_post.get('selftext') else '(내용 없음)'}
 댓글 내용: {item.get('content', '')[:300]}
@@ -378,8 +381,9 @@ COMMENT_ID: {item.get('id', 'unknown')}
 ---"""
             else:
                 # 게시물인 경우
+                # ID 포맷 수정: 컨텐츠 번호를 POST_ID로 사용
                 post_text = f"""[컨텐츠 {i} - 게시물]
-POST_ID: {item.get('id', 'unknown')}
+POST_ID: POST_{i}
 제목: {item.get('title', '제목 없음')}
 점수: {item.get('score', 0)} | 댓글: {item.get('num_comments', 0)} | 루머점수: {rumor_score}/10 | 관련성: {relevance_score}/10
 서브레딧: r/{item.get('subreddit', 'unknown')} | 수집벡터: {vector_info}
@@ -388,11 +392,12 @@ POST_ID: {item.get('id', 'unknown')}
 내용: {item.get('selftext', '')[:200] if item.get('selftext') else '(내용 없음)'}
 ---"""
             formatted_posts.append(post_text)
+            index_to_post[i] = item  # 인덱스 매핑 저장
         
         logger.debug(f"📄 게시물 포맷팅: {len(formatted_posts)}개 게시물")
-        return "\n".join(formatted_posts)
+        return "\n".join(formatted_posts), index_to_post
     
-    def _extract_footnote_mapping(self, report: str, posts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _extract_footnote_mapping(self, report: str, posts: List[Dict[str, Any]], index_mapping: Dict[int, Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """보고서에서 각주 매핑 추출 및 [ref:POST_ID]를 번호로 변환"""
         import re
         
@@ -408,6 +413,7 @@ POST_ID: {item.get('id', 'unknown')}
             return footnote_mapping
         
         logger.info(f"🔗 참조 발견: {len(refs)}개 (고유: {len(set(refs))}개)")
+        logger.debug(f"   참조 목록: {list(set(refs))[:10]}...")  # 처음 10개만 로깅
         
         # 고유한 POST_ID들을 추출하고 번호 할당
         unique_refs = []
@@ -417,11 +423,28 @@ POST_ID: {item.get('id', 'unknown')}
                 ref_to_footnote[ref] = len(unique_refs)
         
         # 각 고유한 참조에 대해 게시물 정보 찾기
-        posts_by_id = {post.get('id'): post for post in posts if post.get('id')}
+        # 인덱스 매핑을 사용하여 ID로 게시물 찾기
+        posts_by_ref_id = {}
+        if index_mapping:
+            for idx, post in index_mapping.items():
+                if post.get('type') == 'post':
+                    posts_by_ref_id[f'POST_{idx}'] = post
+                else:  # comment
+                    posts_by_ref_id[f'COMMENT_{idx}'] = post
+        else:
+            # 폴백: 예전 방식
+            for idx, post in enumerate(posts, 1):
+                if post.get('type') == 'post':
+                    posts_by_ref_id[f'POST_{idx}'] = post
+                else:  # comment
+                    posts_by_ref_id[f'COMMENT_{idx}'] = post
+        
+        logger.debug(f"📚 게시물 참조 ID 매핑 생성: {len(posts_by_ref_id)}개")
+        logger.debug(f"   참조 ID 예시: {list(posts_by_ref_id.keys())[:5]}...")  # 처음 5개만
         
         for post_id, footnote_number in ref_to_footnote.items():
-            if post_id in posts_by_id:
-                post = posts_by_id[post_id]
+            if post_id in posts_by_ref_id:
+                post = posts_by_ref_id[post_id]
                 # created_utc를 Unix timestamp로 변환
                 created_utc = post.get('created_utc', '')
                 if created_utc and isinstance(created_utc, str):
@@ -449,6 +472,7 @@ POST_ID: {item.get('id', 'unknown')}
                 })
             else:
                 logger.warning(f"⚠️ 참조된 POST_ID를 찾을 수 없음: {post_id}")
+                logger.debug(f"   사용 가능한 ID들: {list(posts_by_id.keys())[:10]}")
         
         # 각주 번호순으로 정렬
         footnote_mapping.sort(key=lambda x: x['footnote_number'])
