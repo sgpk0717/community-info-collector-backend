@@ -154,7 +154,7 @@ class OrchestratorService:
             
             content_items = await self.reddit_service.collect_posts_with_comments(
                 keywords=[keyword],  # keywords 파라미터로 변경
-                posts_limit=15,  # posts_limit 파라미터명으로 변경
+                posts_limit=50,  # 15 → 50으로 증가 (더 많은 선택지 확보)
                 time_filter=time_filter
             )
             

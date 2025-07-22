@@ -170,6 +170,19 @@ class LLMService:
             logger.info(f"📄 게시물 포맷팅 완료 - {min(len(posts), 30)}개 게시물 사용")
             self._index_mapping = index_mapping  # 나중에 각주 처리에 사용할 매핑 저장
             
+            # Context window 안전장치: 텍스트 길이 검사 및 압축
+            original_length = len(posts_text)
+            max_safe_length = 15000  # 안전한 최대 길이
+            
+            if original_length > max_safe_length:
+                logger.warning(f"⚠️ 긴 텍스트 감지: {original_length} > {max_safe_length}")
+                # 상위 20개로 추가 삭감
+                selected_posts = selected_posts[:20]
+                posts_text, index_mapping = self._format_posts_for_prompt(selected_posts)
+                logger.info(f"🎩 20개로 압축: {original_length} → {len(posts_text)}")
+            else:
+                logger.info(f"📝 텍스트 길이 안전: {original_length}/{max_safe_length}")
+            
             # 클러스터 정보 포맷팅
             cluster_text = ""
             if cluster_info and cluster_info.get('clusters'):
@@ -302,7 +315,7 @@ Remember: This is a DETAILED analytical report, not a summary. Include as much r
                 prompt=prompt,
                 system_prompt="You are a professional community analyst who creates comprehensive, detailed reports in Korean. Focus on providing rich content with specific examples and direct quotations.",
                 temperature=0.7,
-                max_tokens=4000 if length == ReportLength.detailed else 2500 if length == ReportLength.moderate else 1500
+                max_tokens=self._get_safe_max_tokens(length, len(posts_text))
             )
             
             full_report = response.content
@@ -516,6 +529,26 @@ POST_ID: POST_{i}
             max_tokens=4000
         )
         return response.content
+    
+    def _get_safe_max_tokens(self, length: ReportLength, input_text_length: int) -> int:
+        """입력 길이를 고려한 안전한 max_tokens 설정"""
+        # 기본 토큰 할당
+        base_tokens = {
+            ReportLength.simple: 1500,
+            ReportLength.moderate: 2500, 
+            ReportLength.detailed: 4000
+        }
+        
+        # 입력 길이가 길면 출력 토큰 삭감
+        if input_text_length > 12000:
+            reduction_factor = 0.7  # 30% 감소
+            logger.warning(f"⚠️ 긴 입력으로 인한 max_tokens 감소: {reduction_factor}")
+            return int(base_tokens[length] * reduction_factor)
+        elif input_text_length > 8000:
+            reduction_factor = 0.85  # 15% 감소
+            return int(base_tokens[length] * reduction_factor)
+        
+        return base_tokens[length]
     
     def _format_cluster_info(self, cluster_info: Dict[str, Any]) -> str:
         """클러스터 정보를 프롬프트용으로 포맷팅"""
