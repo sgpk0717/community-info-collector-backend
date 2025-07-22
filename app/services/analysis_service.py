@@ -83,12 +83,17 @@ class AnalysisService:
             
             # 키워드 정보 생성
             keywords_used = []
+            keyword_stats = metadata.get('keyword_stats', {})
+            
             for idx, kw in enumerate(metadata['expanded_keywords'][:10]):
+                # 키워드별 통계 정보 가져오기
+                kw_stat = keyword_stats.get(kw, {})
+                
                 keywords_used.append({
                     'keyword': kw,
                     'translated_keyword': None,
-                    'posts_found': 0,  # 오케스트레이터에서 상세 정보 제공 시 업데이트
-                    'sample_titles': []
+                    'posts_found': kw_stat.get('posts_found', 0),
+                    'sample_titles': kw_stat.get('sample_titles', [])
                 })
             
             report_create = ReportCreate(
@@ -104,6 +109,13 @@ class AnalysisService:
             
             report_id = await self.db_service.save_report(report_create)
             logger.info(f"✅ 보고서 저장 완료: {report_id}")
+            
+            # 각주 매핑 저장 (있을 경우)
+            footnote_mapping = report_data.get('footnote_mapping', [])
+            if footnote_mapping:
+                logger.info(f"🔗 각주 매핑 저장 시작: {len(footnote_mapping)}개")
+                await self.db_service.save_report_links(report_id, footnote_mapping)
+                logger.info(f"✅ 각주 매핑 저장 완료")
             
             # 4. 스케줄 생성 (요청 시)
             schedule_id = None

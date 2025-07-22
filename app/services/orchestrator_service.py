@@ -107,7 +107,8 @@ class OrchestratorService:
                     'total_collected': collection_result['total'],
                     'filtered_count': len(filtered_content),
                     'cluster_count': len(clustering_result['clusters']),
-                    'quality_score': final_report.get('quality_score', 0)
+                    'quality_score': final_report.get('quality_score', 0),
+                    'keyword_stats': collection_result.get('keyword_stats', {})  # 키워드별 통계 추가
                 }
             }
             
@@ -122,6 +123,7 @@ class OrchestratorService:
     ) -> Dict[str, Any]:
         """데이터 수집 및 품질 체크"""
         all_content = []
+        keyword_stats = {}  # 키워드별 통계 정보
         
         # 키워드별로 수집
         for idx, keyword in enumerate(keywords[:10]):  # 최대 10개 키워드
@@ -134,6 +136,13 @@ class OrchestratorService:
                 keywords=[keyword],  # keywords 파라미터로 변경
                 posts_limit=15  # posts_limit 파라미터명으로 변경
             )
+            
+            # 키워드별 통계 정보 수집
+            keyword_posts = [item for item in content_items if item['type'] == 'post']
+            keyword_stats[keyword] = {
+                'posts_found': len(keyword_posts),
+                'sample_titles': [post['title'] for post in keyword_posts[:3]]  # 상위 3개 제목
+            }
             
             # 수집된 콘텐츠에 메타데이터 추가
             for item in content_items:
@@ -148,7 +157,8 @@ class OrchestratorService:
         return {
             'content': unique_content,
             'total': len(all_content),
-            'unique': len(unique_content)
+            'unique': len(unique_content),
+            'keyword_stats': keyword_stats  # 키워드별 통계 추가
         }
     
     async def _filter_with_quality_check(
@@ -216,30 +226,36 @@ class OrchestratorService:
         length: ReportLength,
         keywords: List[str]
     ) -> Dict[str, Any]:
-        """통합 품질 보고서 생성"""
+        """통합 품질 보고서 생성 - 각주 시스템 포함"""
         
-        # 구조화된 프롬프트 생성
-        structured_prompt = await self._create_structured_prompt(
-            clustering_result,
-            query,
-            length,
-            keywords
-        )
+        # 모든 게시물 수집 (클러스터에서)
+        all_posts = []
+        for cluster in clustering_result['clusters']:
+            for item in cluster['items']:
+                if item['type'] == 'post':
+                    all_posts.append(item)
         
-        # LLM 호출로 보고서 생성
+        # 중복 제거 및 정렬
+        unique_posts = {post['id']: post for post in all_posts}.values()
+        sorted_posts = sorted(unique_posts, key=lambda x: x.get('relevance_score', 0), reverse=True)
+        
+        # LLM 서비스를 통한 보고서 생성 (각주 포함)
         try:
-            response = await self.llm_service._call_llm(
-                structured_prompt,
-                temperature=0.3  # 일관성을 위해 낮은 temperature
+            report_result = await self.llm_service.generate_report(
+                posts=list(sorted_posts),
+                query=query,
+                length=length,
+                cluster_info=clustering_result
             )
             
             # 보고서 파싱
-            report_sections = self._parse_report_sections(response)
+            report_sections = self._parse_report_sections(report_result['full_report'])
             
             return {
-                'full_report': response,
+                'full_report': report_result['full_report'],
                 'sections': report_sections,
-                'quality_score': await self._calculate_quality_score(report_sections)
+                'quality_score': await self._calculate_quality_score(report_sections),
+                'footnote_mapping': report_result.get('footnote_mapping', [])
             }
             
         except Exception as e:
@@ -279,7 +295,8 @@ class OrchestratorService:
                     'consistency_score': consistency_score,
                     'completeness': completeness,
                     'quality_score': improved_report.get('quality_score', 0)
-                }
+                },
+                'footnote_mapping': report.get('footnote_mapping', [])
             }
         
         # 5. 최종 포맷팅
@@ -292,7 +309,8 @@ class OrchestratorService:
                 'consistency_score': consistency_score,
                 'completeness': completeness,
                 'quality_score': report.get('quality_score', 0)
-            }
+            },
+            'footnote_mapping': report.get('footnote_mapping', [])
         }
     
     async def _create_structured_prompt(
