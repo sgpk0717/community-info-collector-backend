@@ -4,17 +4,16 @@ import logging
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
+logger = logging.getLogger(__name__)
+
 # X Service import를 조건부로 처리
 try:
     from app.services.x_service import XService
     X_SERVICE_AVAILABLE = True
-except ImportError as e:
-    logger = logging.getLogger(__name__)
+except (ImportError, ModuleNotFoundError) as e:
     logger.warning(f"X Service를 로드할 수 없습니다: {str(e)}")
     XService = None
     X_SERVICE_AVAILABLE = False
-
-logger = logging.getLogger(__name__)
 
 class MultiPlatformService:
     """멀티 플랫폼 통합 검색 서비스"""
