@@ -381,7 +381,7 @@ class RedditService:
         logger.info(f"✅ 다중 키워드 검색 완료: 총 {len(all_posts)}개 게시물 수집")
         return all_posts
     
-    async def collect_posts_with_comments(self, keywords: List[str], max_comments_per_post: int = 10, posts_limit: int = 20, time_filter: str = 'all') -> List[Dict[str, Any]]:
+    async def collect_posts_with_comments(self, keywords: List[str], max_comments_per_post: int = 10, posts_limit: int = 20) -> List[Dict[str, Any]]:
         """게시물과 댓글을 함께 수집"""
         logger.info(f"📄 게시물+댓글 수집 시작 - 키워드: {len(keywords)}개, 게시물당 댓글: {max_comments_per_post}개")
         
@@ -392,7 +392,7 @@ class RedditService:
                 await self._check_rate_limit()
                 
                 # 게시물 수집
-                posts = await self.search_posts(keyword, limit=posts_limit, time_filter=time_filter)
+                posts = await self.search_posts(keyword, limit=posts_limit)
                 logger.info(f"🔍 키워드 '{keyword}': {len(posts)}개 게시물 수집")
                 
                 for post in posts:
@@ -451,9 +451,7 @@ class RedditService:
                             })
                     return comments
                 except Exception as e:
-                    logger.error(f"❌ 게시물 {post_id}의 댓글 수집 실패: {str(e)}")
-                    # 댓글은 필수가 아니므로 오류 시 빈 리스트 반환은 허용
-                    # 이는 더미데이터가 아니라 실제로 댓글을 가져올 수 없는 상황을 반영
+                    logger.warning(f"⚠️ 게시물 {post_id}의 댓글 수집 실패: {str(e)}")
                     return []
             
             loop = asyncio.get_event_loop()

@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional, Literal, Tuple
+from typing import List, Dict, Any, Optional, Literal
 from app.core.exceptions import OpenAIAPIException
 from app.schemas.search import ReportLength
 from app.services.llm_providers import BaseLLMProvider, OpenAIProvider, GeminiProvider
@@ -6,7 +6,6 @@ import logging
 import json
 import os
 import asyncio
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -113,13 +112,16 @@ class LLMService:
                - DD (Due Diligence)
                - YOLO, calls, puts (for stock-related)
                - ELI5 (Explain Like I'm 5)
-            5. Extract 10-20 keywords to maximize coverage
+            5. Extract 15-30 keywords to maximize comprehensive coverage
+            6. Include temporal variations: "recent", "latest", "new", "upcoming", "2024", "2025"
+            7. Add intensity modifiers: "major", "significant", "breaking", "urgent", "critical"
             
             Examples:
-            - For "Tesla earnings prediction": ["Tesla", "TSLA", "Tesla earnings", "TSLA earnings", "Tesla Q4", "Tesla forecast", "TSLA prediction", "Tesla revenue", "Tesla results", "Tesla call", "TSLA DD", "Tesla outlook", "when Tesla earnings", "TSLA vs", "Tesla profit"]
-            - For "Apple AI": ["Apple", "AAPL", "Apple AI", "Apple artificial intelligence", "Apple ML", "Apple GPT", "Apple Siri", "AAPL AI", "Apple vs Google AI", "Apple AI news", "when Apple AI", "Apple AI chip"]
+            - For "Tesla earnings prediction": ["Tesla", "TSLA", "Tesla earnings", "TSLA earnings", "Tesla Q4", "Tesla forecast", "TSLA prediction", "Tesla revenue", "Tesla results", "Tesla call", "TSLA DD", "Tesla outlook", "when Tesla earnings", "TSLA vs", "Tesla profit", "Tesla latest news", "Tesla 2024", "Tesla upcoming", "Tesla major announcement", "Tesla breaking news"]
+            - For "Apple AI": ["Apple", "AAPL", "Apple AI", "Apple artificial intelligence", "Apple ML", "Apple GPT", "Apple Siri", "AAPL AI", "Apple vs Google AI", "Apple AI news", "when Apple AI", "Apple AI chip", "Apple Intelligence", "Apple machine learning", "Apple AI features", "Apple AI 2024", "Apple latest AI", "Apple AI update"]
             
             Generate comprehensive keywords for: "{english_query}"
+            Target: 20-40 keywords for maximum data coverage
             Return as JSON array:
             """
             
@@ -157,37 +159,16 @@ class LLMService:
             logger.error(f"   Model: {self.provider.default_model}")
             import traceback
             logger.error(f"   Stack trace:\n{traceback.format_exc()}")
-            # 오류 발생 시 예외를 전파
-            raise Exception(f"키워드 확장 실패: {str(e)}")
+            return []  # 실패해도 계속 진행
     
-    async def generate_report(self, posts: List[Dict[str, Any]], query: str, length: ReportLength, cluster_info: Optional[Dict[str, Any]] = None, time_filter: Optional[str] = None) -> Dict[str, Any]:
+    async def generate_report(self, posts: List[Dict[str, Any]], query: str, length: ReportLength) -> Dict[str, Any]:
         """수집된 게시물을 바탕으로 분석 보고서 생성"""
         try:
             logger.info(f"📝 보고서 생성 시작 - 키워드: '{query}', 길이: {length.value}, 게시물 수: {len(posts)}")
             
-            # 게시물 정보 포맷팅 (인덱스 매핑과 함께)
-            posts_text, index_mapping = self._format_posts_for_prompt(posts[:30])  # 최대 30개 게시물
+            # 게시물 정보 포맷팅
+            posts_text = self._format_posts_for_prompt(posts[:30])  # 최대 30개 게시물
             logger.info(f"📄 게시물 포맷팅 완료 - {min(len(posts), 30)}개 게시물 사용")
-            self._index_mapping = index_mapping  # 나중에 각주 처리에 사용할 매핑 저장
-            
-            # Context window 안전장치: 텍스트 길이 검사 및 압축
-            original_length = len(posts_text)
-            max_safe_length = 15000  # 안전한 최대 길이
-            
-            if original_length > max_safe_length:
-                logger.warning(f"⚠️ 긴 텍스트 감지: {original_length} > {max_safe_length}")
-                # 상위 20개로 추가 삭감
-                selected_posts = selected_posts[:20]
-                posts_text, index_mapping = self._format_posts_for_prompt(selected_posts)
-                logger.info(f"🎩 20개로 압축: {original_length} → {len(posts_text)}")
-            else:
-                logger.info(f"📝 텍스트 길이 안전: {original_length}/{max_safe_length}")
-            
-            # 클러스터 정보 포맷팅
-            cluster_text = ""
-            if cluster_info and cluster_info.get('clusters'):
-                cluster_text = self._format_cluster_info(cluster_info)
-                logger.info(f"🎯 클러스터 정보 포함 - {len(cluster_info['clusters'])}개 주제")
             
             # 보고서 길이에 따른 프롬프트 조정
             length_guide = {
@@ -196,36 +177,10 @@ class LLMService:
                 ReportLength.detailed: "각 섹션을 3-5 단락으로 매우 상세하게, 구체적인 사례와 인용을 풍부하게 포함"
             }
             
-            # 클러스터 정보가 있으면 프롬프트에 포함
-            cluster_section = ""
-            if cluster_text:
-                cluster_section = f"""
-주제별 분류 정보:
-{cluster_text}
-
-위의 주제별 분류를 참고하여 보고서를 구조화해주세요.
-"""
-            
-            # 시간 필터 정보 추가
-            time_filter_text = ""
-            if time_filter:
-                time_filter_map = {
-                    '1h': '최근 1시간',
-                    '3h': '최근 3시간',
-                    '6h': '최근 6시간',
-                    '12h': '최근 12시간',
-                    '1d': '최근 24시간(1일)',
-                    '3d': '최근 3일',
-                    '1w': '최근 1주일',
-                    '1m': '최근 1개월'
-                }
-                time_period = time_filter_map.get(time_filter, '전체 기간')
-                time_filter_text = f"\n\n⚠️ 중요: 모든 분석은 {time_period} 동안의 데이터를 기반으로 합니다. 보고서에서 '최근 2주간' 같은 잘못된 기간 표현을 사용하지 마세요. 반드시 '{time_period}' 또는 적절한 시간 표현을 사용하세요."
-            
-            prompt = f"""You are a professional community analyst. The following are social media posts collected with the keyword '{query}'.{time_filter_text}
+            prompt = f"""You are a professional community analyst. The following are social media posts collected with the keyword '{query}'.
 
 {posts_text}
-{cluster_section}
+
 Based on this English data, create a HIGHLY DETAILED analysis report in KOREAN following these guidelines:
 
 Report Length: {length_guide[length]}
@@ -251,8 +206,6 @@ Required sections (write all section headers and content in Korean):
 - 가장 많은 공감을 받은 의견 5-7개 상세 분석
 - **⚠️ 반드시 "영문 원문" (한국어 번역) 형식으로 인용**
 - 예시: "This is the future of AI" (이것이 AI의 미래입니다) [ref:123]
-- **댓글 인용 시**: 반드시 어떤 게시글에 달린 댓글인지 명시하고, 게시글의 제목과 핵심 내용도 함께 설명
-- 예시: "테슬라의 FSD가 왜 실패할 수밖에 없는가"라는 게시글에 달린 댓글: "LiDAR is essential" (LiDAR는 필수다) [ref:COMMENT_456]
 - 해당 의견이 주목받는 이유와 맥락 설명
 
 ## 5. 구체적인 사례와 인용 (Specific Examples)
@@ -315,14 +268,14 @@ Remember: This is a DETAILED analytical report, not a summary. Include as much r
                 prompt=prompt,
                 system_prompt="You are a professional community analyst who creates comprehensive, detailed reports in Korean. Focus on providing rich content with specific examples and direct quotations.",
                 temperature=0.7,
-                max_tokens=self._get_safe_max_tokens(length, len(posts_text))
+                max_tokens=4000 if length == ReportLength.detailed else 2500 if length == ReportLength.moderate else 1500
             )
             
             full_report = response.content
             logger.info(f"✅ {self.provider.provider_name} API 응답 수신 - 보고서 길이: {len(full_report)} 문자")
             
-            # 각주 매핑 추출 (변환 전) - 인덱스 매핑 사용
-            footnote_mapping = self._extract_footnote_mapping(full_report, posts, self._index_mapping)
+            # 각주 매핑 추출 (변환 전)
+            footnote_mapping = self._extract_footnote_mapping(full_report, posts)
             
             # [ref:POST_ID]를 번호로 변환
             logger.info("🔄 각주 변환 시작...")
@@ -358,59 +311,30 @@ Remember: This is a DETAILED analytical report, not a summary. Include as much r
             logger.error(f"{self.provider.provider_name} API error in generate_report: {str(e)}")
             raise OpenAIAPIException(f"Failed to generate report: {str(e)}")
     
-    def _format_posts_for_prompt(self, posts: List[Dict[str, Any]]) -> Tuple[str, Dict[int, Dict[str, Any]]]:
-        """게시물과 댓글을 프롬프트용으로 포맷팅 (인덱스 매핑과 함께 반환)"""
+    def _format_posts_for_prompt(self, posts: List[Dict[str, Any]]) -> str:
+        """게시물을 프롬프트용으로 포맷팅"""
         formatted_posts = []
-        index_to_post = {}  # 인덱스 -> 게시물 매핑
         
-        # 게시물 ID로 매핑 생성 (댓글에서 부모 게시물 참조용)
-        posts_by_id = {p.get('id'): p for p in posts if p.get('type') == 'post' and p.get('id')}
-        
-        for i, item in enumerate(posts, 1):
+        for i, post in enumerate(posts, 1):
             # 개선된 포맷팅에 루머 점수와 수집 벡터 정보 포함
-            vector_info = item.get('collection_vector', 'unknown')
-            rumor_score = item.get('rumor_score', 0)
-            linguistic_flags = item.get('linguistic_flags', [])
+            vector_info = post.get('collection_vector', 'unknown')
+            rumor_score = post.get('rumor_score', 0)
+            linguistic_flags = post.get('linguistic_flags', [])
             
-            # 관련성 점수 정보 추가
-            relevance_score = item.get('relevance_score', 0)
-            relevance_reason = item.get('relevance_reason', '평가 없음')
-            
-            if item.get('type') == 'comment':
-                # 댓글인 경우 부모 게시물 정보도 포함
-                parent_post_id = item.get('post_id') or item.get('parent_id')
-                parent_post = posts_by_id.get(parent_post_id, {})
-                
-                # ID 포맷 수정: 컨텐츠 번호를 COMMENT_ID로 사용
-                post_text = f"""[컨텐츠 {i} - 댓글]
-COMMENT_ID: COMMENT_{i}
-부모 게시글 제목: {parent_post.get('title', '제목 없음')}
-부모 게시글 내용: {parent_post.get('selftext', '')[:100] if parent_post.get('selftext') else '(내용 없음)'}
-댓글 내용: {item.get('content', '')[:300]}
-댓글 추천수: {item.get('score', 0)} | 부모 게시글 추천수: {parent_post.get('score', 0)}
-서브레딧: r/{item.get('subreddit', 'unknown')}
-작성자: {item.get('author', 'unknown')}
-관련성: {relevance_score}/10 | 루머점수: {rumor_score}/10
----"""
-            else:
-                # 게시물인 경우
-                # ID 포맷 수정: 컨텐츠 번호를 POST_ID로 사용
-                post_text = f"""[컨텐츠 {i} - 게시물]
-POST_ID: POST_{i}
-제목: {item.get('title', '제목 없음')}
-점수: {item.get('score', 0)} | 댓글: {item.get('num_comments', 0)} | 루머점수: {rumor_score}/10 | 관련성: {relevance_score}/10
-서브레딧: r/{item.get('subreddit', 'unknown')} | 수집벡터: {vector_info}
+            post_text = f"""[게시물 {i}]
+POST_ID: {post['id']}
+제목: {post['title']}
+점수: {post['score']} | 댓글: {post['num_comments']} | 루머점수: {rumor_score}/10
+서브레딧: r/{post['subreddit']} | 수집벡터: {vector_info}
 언어신호: {', '.join(linguistic_flags) if linguistic_flags else '없음'}
-관련성이유: {relevance_reason}
-내용: {item.get('selftext', '')[:200] if item.get('selftext') else '(내용 없음)'}
+내용: {post['selftext'][:200] if post['selftext'] else '(내용 없음)'}
 ---"""
             formatted_posts.append(post_text)
-            index_to_post[i] = item  # 인덱스 매핑 저장
         
         logger.debug(f"📄 게시물 포맷팅: {len(formatted_posts)}개 게시물")
-        return "\n".join(formatted_posts), index_to_post
+        return "\n".join(formatted_posts)
     
-    def _extract_footnote_mapping(self, report: str, posts: List[Dict[str, Any]], index_mapping: Dict[int, Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    def _extract_footnote_mapping(self, report: str, posts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """보고서에서 각주 매핑 추출 및 [ref:POST_ID]를 번호로 변환"""
         import re
         
@@ -426,7 +350,6 @@ POST_ID: POST_{i}
             return footnote_mapping
         
         logger.info(f"🔗 참조 발견: {len(refs)}개 (고유: {len(set(refs))}개)")
-        logger.debug(f"   참조 목록: {list(set(refs))[:10]}...")  # 처음 10개만 로깅
         
         # 고유한 POST_ID들을 추출하고 번호 할당
         unique_refs = []
@@ -436,56 +359,25 @@ POST_ID: POST_{i}
                 ref_to_footnote[ref] = len(unique_refs)
         
         # 각 고유한 참조에 대해 게시물 정보 찾기
-        # 인덱스 매핑을 사용하여 ID로 게시물 찾기
-        posts_by_ref_id = {}
-        if index_mapping:
-            for idx, post in index_mapping.items():
-                if post.get('type') == 'post':
-                    posts_by_ref_id[f'POST_{idx}'] = post
-                else:  # comment
-                    posts_by_ref_id[f'COMMENT_{idx}'] = post
-        else:
-            # 폴백: 예전 방식
-            for idx, post in enumerate(posts, 1):
-                if post.get('type') == 'post':
-                    posts_by_ref_id[f'POST_{idx}'] = post
-                else:  # comment
-                    posts_by_ref_id[f'COMMENT_{idx}'] = post
-        
-        logger.debug(f"📚 게시물 참조 ID 매핑 생성: {len(posts_by_ref_id)}개")
-        logger.debug(f"   참조 ID 예시: {list(posts_by_ref_id.keys())[:5]}...")  # 처음 5개만
+        posts_by_id = {post['id']: post for post in posts}
         
         for post_id, footnote_number in ref_to_footnote.items():
-            if post_id in posts_by_ref_id:
-                post = posts_by_ref_id[post_id]
-                # created_utc를 Unix timestamp로 변환
-                created_utc = post.get('created_utc', '')
-                if created_utc and isinstance(created_utc, str):
-                    try:
-                        # ISO 형식 문자열을 datetime으로 파싱 후 Unix timestamp로 변환
-                        dt = datetime.fromisoformat(created_utc.replace('Z', '+00:00'))
-                        created_utc = dt.timestamp()
-                    except:
-                        # 이미 숫자형이거나 파싱 실패 시 원본 유지
-                        pass
-                elif not created_utc:
-                    created_utc = 0  # 빈 값은 0으로
-                
+            if post_id in posts_by_id:
+                post = posts_by_id[post_id]
                 footnote_mapping.append({
                     "footnote_number": footnote_number,
-                    "post_id": post.get('id', ''),
-                    "url": post.get('url', ''),
-                    "title": post.get('title', ''),
-                    "score": post.get('score', 0),
-                    "comments": post.get('num_comments', 0),
-                    "created_utc": created_utc,
-                    "subreddit": post.get('subreddit', ''),
-                    "author": post.get('author', ''),
+                    "post_id": post['id'],
+                    "url": post['url'],
+                    "title": post['title'],
+                    "score": post['score'],
+                    "comments": post['num_comments'],
+                    "created_utc": post['created_utc'],
+                    "subreddit": post['subreddit'],
+                    "author": post['author'],
                     "position_in_report": footnote_number
                 })
             else:
                 logger.warning(f"⚠️ 참조된 POST_ID를 찾을 수 없음: {post_id}")
-                logger.debug(f"   사용 가능한 ID들: {list(posts_by_ref_id.keys())[:10]}")
         
         # 각주 번호순으로 정렬
         footnote_mapping.sort(key=lambda x: x['footnote_number'])
@@ -529,56 +421,3 @@ POST_ID: POST_{i}
             max_tokens=4000
         )
         return response.content
-    
-    def _get_safe_max_tokens(self, length: ReportLength, input_text_length: int) -> int:
-        """입력 길이를 고려한 안전한 max_tokens 설정"""
-        # 기본 토큰 할당
-        base_tokens = {
-            ReportLength.simple: 1500,
-            ReportLength.moderate: 2500, 
-            ReportLength.detailed: 4000
-        }
-        
-        # 입력 길이가 길면 출력 토큰 삭감
-        if input_text_length > 12000:
-            reduction_factor = 0.7  # 30% 감소
-            logger.warning(f"⚠️ 긴 입력으로 인한 max_tokens 감소: {reduction_factor}")
-            return int(base_tokens[length] * reduction_factor)
-        elif input_text_length > 8000:
-            reduction_factor = 0.85  # 15% 감소
-            return int(base_tokens[length] * reduction_factor)
-        
-        return base_tokens[length]
-    
-    def _format_cluster_info(self, cluster_info: Dict[str, Any]) -> str:
-        """클러스터 정보를 프롬프트용으로 포맷팅"""
-        clusters = cluster_info.get('clusters', [])
-        statistics = cluster_info.get('statistics', {})
-        
-        if not clusters:
-            return ""
-        
-        formatted_lines = ["식별된 주요 주제:"]
-        
-        for idx, cluster in enumerate(clusters, 1):
-            topic = cluster['topic']
-            item_count = len(cluster['items'])
-            avg_relevance = cluster.get('average_relevance', 0)
-            
-            formatted_lines.append(f"\n{idx}. {topic['name']} ({item_count}개 콘텐츠, 평균 관련성: {avg_relevance:.1f}/10)")
-            formatted_lines.append(f"   - 설명: {topic['description']}")
-            
-            # 핵심 인사이트 포함
-            if cluster.get('key_insights'):
-                formatted_lines.append("   - 주요 콘텐츠:")
-                for insight in cluster['key_insights'][:2]:
-                    formatted_lines.append(f"     • {insight['title'][:60]}... (점수: {insight['score']})")
-        
-        # 통계 정보 추가
-        if statistics:
-            formatted_lines.append(f"\n전체 통계:")
-            formatted_lines.append(f"- 총 콘텐츠: {statistics.get('total_items', 0)}개")
-            formatted_lines.append(f"- 클러스터된 콘텐츠: {statistics.get('total_clustered', 0)}개")
-            formatted_lines.append(f"- 평균 클러스터 크기: {statistics.get('average_cluster_size', 0):.1f}개")
-        
-        return "\n".join(formatted_lines)

@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from app.services.database_service import DatabaseService
 from app.schemas.report import Report, ReportList
 from typing import List
+from pydantic import BaseModel
 import logging
 
 router = APIRouter()
@@ -65,4 +66,24 @@ async def get_report_links(report_id: str):
         
     except Exception as e:
         logger.error(f"Error getting report links: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class DeleteReportsRequest(BaseModel):
+    report_ids: List[str]
+
+@router.delete("/reports")
+async def delete_reports(request: DeleteReportsRequest):
+    """보고서 일괄 삭제"""
+    try:
+        db_service = DatabaseService()
+        deleted_count = await db_service.delete_reports(request.report_ids)
+        
+        return {
+            "success": True,
+            "deleted_count": deleted_count,
+            "message": f"{deleted_count}개의 보고서가 삭제되었습니다."
+        }
+        
+    except Exception as e:
+        logger.error(f"Error deleting reports: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
