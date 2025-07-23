@@ -1,5 +1,5 @@
 from typing import Dict, Any, List, Optional
-from app.services.reddit_service import RedditService
+from app.services.multi_platform_service import MultiPlatformService
 from app.services.llm_service import LLMService
 from app.services.database_service import DatabaseService
 from app.schemas.search import SearchRequest, ReportLength, TimeFilter
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class AnalysisService:
     def __init__(self, thread_pool: Optional[ThreadPoolExecutor] = None, api_semaphore: Optional[asyncio.Semaphore] = None):
-        self.reddit_service = RedditService(thread_pool=thread_pool)
+        self.multi_platform_service = MultiPlatformService(thread_pool=thread_pool, api_semaphore=api_semaphore)
         self.llm_service = LLMService(api_semaphore=api_semaphore)
         self.db_service = DatabaseService()
         self.thread_pool = thread_pool
@@ -82,55 +82,31 @@ class AnalysisService:
             if request.time_filter:
                 logger.info(f"⏰ 시간 필터 적용: {request.time_filter.value} ({start_date.strftime('%Y-%m-%d %H:%M')} ~ {end_date.strftime('%Y-%m-%d %H:%M')})")
             
-            # 5. 게시물 수집 (영어로)
+            # 5. 멀티 플랫폼 데이터 수집 (Reddit 90% + X 10%)
             if progress_callback:
                 await progress_callback("소셜 미디어 데이터 수집 중", 20)
             
-            all_posts = []
+            # 확장된 키워드가 있으면 함께 사용, 없으면 원본 키워드만 사용
+            keywords_to_search = [english_query]
+            if expanded_keywords:
+                keywords_to_search.extend(expanded_keywords)
             
-            # Reddit 검색 (게시물 + 댓글 함께 수집)
-            if "reddit" in request.sources:
-                logger.info(f"🔍 Reddit 게시물+댓글 검색 시작: '{english_query}' (시간 필터: {reddit_time_filter})")
-                
-                # 확장된 키워드가 있으면 함께 사용, 없으면 원본 키워드만 사용
-                keywords_to_search = [english_query]
-                if expanded_keywords:
-                    keywords_to_search.extend(expanded_keywords)
-                
-                logger.info(f"📈 총 {len(keywords_to_search)}개 키워드로 게시물+댓글 수집")
-                
-                # 게시물과 댓글을 함께 수집
-                all_content = await self.reddit_service.collect_posts_with_comments(
-                    keywords=keywords_to_search,
-                    max_comments_per_post=8,  # 게시물당 최대 8개 댓글
-                    posts_limit=15  # 키워드당 최대 15개 게시물
-                )
-                
-                # 게시물과 댓글을 분리
-                posts_only = [item for item in all_content if item['type'] == 'post']
-                comments_only = [item for item in all_content if item['type'] == 'comment']
-                
-                logger.info(f"📊 수집 완료 - 게시물: {len(posts_only)}개, 댓글: {len(comments_only)}개")
-                
-                # 기존 형식으로 변환 (게시물만)
-                all_posts.extend([{
-                    'id': item['id'],
-                    'title': item['title'],
-                    'selftext': item['content'],
-                    'score': item['score'],
-                    'created_utc': item['created_utc'],
-                    'subreddit': item['subreddit'],
-                    'author': item['author'],
-                    'url': item['url'],
-                    'num_comments': item['num_comments'],
-                    'keyword_source': item['keyword_source']
-                } for item in posts_only])
-                
-                # TODO: 댓글 데이터를 나중에 분석에 활용할 수 있도록 저장
-                # 현재는 게시물만 분석하지만, 3단계에서 댓글도 함께 분석하도록 개선 예정
-                
-                if progress_callback:
-                    await progress_callback(f"Reddit에서 게시물 {len(posts_only)}개 + 댓글 {len(comments_only)}개 수집", 50)
+            logger.info(f"📈 총 {len(keywords_to_search)}개 키워드로 멀티 플랫폼 검색")
+            
+            # 멀티 플랫폼 검색 실행
+            all_posts = await self.multi_platform_service.search_all_platforms(
+                query=english_query,  # 번역된 키워드 사용
+                sources=request.sources,
+                user_nickname=request.user_nickname,
+                reddit_limit=45,  # Reddit은 충분히 많이
+                x_limit=10,       # X는 최소한만 (API 제한으로 최소 10개)
+                force_x_api=request.force_x_api if hasattr(request, 'force_x_api') else False
+            )
+            
+            if progress_callback:
+                reddit_count = len([p for p in all_posts if p.get('platform') == 'reddit'])
+                x_count = len([p for p in all_posts if p.get('platform') == 'x'])
+                await progress_callback(f"데이터 수집 완료 - Reddit: {reddit_count}개, X: {x_count}개", 50)
             
             # 날짜 범위에 따른 게시물 필터링
             if request.time_filter:
@@ -200,7 +176,8 @@ class AnalysisService:
                 posts_collected=len(unique_posts),
                 report_length=request.length.value,
                 session_id=request.session_id,
-                keywords_used=keywords_used
+                keywords_used=keywords_used,
+                time_filter=request.time_filter.value if request.time_filter else None
             )
             
             report_id = await self.db_service.save_report(report_create)
