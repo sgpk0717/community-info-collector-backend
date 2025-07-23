@@ -12,7 +12,7 @@ class ReportLength(str, Enum):
 class SearchSource(str, Enum):
     reddit = "reddit"
     threads = "threads"
-    twitter = "twitter"
+    x = "x"  # X(Twitter) 플랫폼
 
 class TimeFilter(str, Enum):
     """시간 필터 옵션"""
