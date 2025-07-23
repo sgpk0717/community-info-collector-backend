@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import search, search_v2, reports, test, simple_test, users, logs
+from app.api.v1.endpoints import search, search_v2, reports, test, simple_test, users, logs, platform
 
 api_router = APIRouter()
 
@@ -11,3 +11,4 @@ api_router.include_router(test.router, tags=["test"])
 api_router.include_router(simple_test.router, tags=["simple-test"])
 api_router.include_router(users.router, tags=["users"])
 api_router.include_router(logs.router, tags=["logs"])
+api_router.include_router(platform.router, tags=["platform"])

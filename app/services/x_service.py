@@ -13,6 +13,16 @@ class XService:
     """X(Twitter) API 서비스 - Free 티어 최적화"""
     
     def __init__(self, thread_pool: Optional[ThreadPoolExecutor] = None):
+        # X API 사용 여부 확인
+        self.use_x_api = os.getenv('USE_X_API', 'false').lower() == 'true'
+        
+        if not self.use_x_api:
+            logger.warning("⚠️ X API가 비활성화되어 있습니다 (USE_X_API=false)")
+            self.client = None
+            self.usage_service = None
+            self.thread_pool = thread_pool
+            return
+        
         # 환경변수에서 API 키 로드
         self.bearer_token = os.getenv('X_BEARER_TOKEN')
         self.api_key = os.getenv('X_API_KEY')
@@ -63,6 +73,11 @@ class XService:
     
     async def search_tweets(self, query: str, max_results: int = 10, user_nickname: str = "system") -> List[Dict[str, Any]]:
         """트윗 검색 - 사용량 체크 후 실행"""
+        # X API가 비활성화된 경우 빈 리스트 반환
+        if not self.use_x_api:
+            logger.info("🚫 X API가 비활성화되어 있어 검색을 건너뜁니다")
+            return []
+        
         try:
             logger.info(f"🔍 X API 검색 시작: '{query}' (최대 {max_results}개)")
             
@@ -133,6 +148,11 @@ class XService:
     
     async def get_user_tweets(self, username: str, max_results: int = 5, user_nickname: str = "system") -> List[Dict[str, Any]]:
         """특정 사용자의 최근 트윗 조회"""
+        # X API가 비활성화된 경우 빈 리스트 반환
+        if not self.use_x_api:
+            logger.info("🚫 X API가 비활성화되어 있어 사용자 트윗 조회를 건너뜁니다")
+            return []
+        
         try:
             logger.info(f"👤 X API 사용자 트윗 조회: @{username} (최대 {max_results}개)")
             
@@ -201,6 +221,8 @@ class XService:
     
     async def get_usage_stats(self, user_nickname: str = "system") -> Dict[str, Any]:
         """현재 사용량 통계 조회"""
+        if not self.use_x_api:
+            return {"error": "X API is disabled", "use_x_api": False}
         return await self.usage_service.get_usage_stats(user_nickname)
     
     def normalize_for_analysis(self, tweets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

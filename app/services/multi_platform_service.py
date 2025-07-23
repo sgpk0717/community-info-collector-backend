@@ -20,7 +20,11 @@ class MultiPlatformService:
         
         try:
             self.x_service = XService(thread_pool=thread_pool)
-            logger.info("✅ X 서비스 초기화 완료")
+            # USE_X_API가 false인 경우 메시지
+            if self.x_service and not getattr(self.x_service, 'use_x_api', True):
+                logger.info("ℹ️ X 서비스가 환경변수 설정에 의해 비활성화됨 (USE_X_API=false)")
+            else:
+                logger.info("✅ X 서비스 초기화 완료")
         except Exception as e:
             logger.error(f"❌ X 서비스 초기화 실패: {str(e)}")
             logger.warning("X API 자격 증명을 확인하세요. Reddit만 사용됩니다.")
@@ -195,7 +199,7 @@ class MultiPlatformService:
         if self.reddit_service:
             platforms.append("reddit")
         
-        if self.x_service:
+        if self.x_service and getattr(self.x_service, 'use_x_api', False):
             platforms.append("x")
         
         return platforms
@@ -205,6 +209,9 @@ class MultiPlatformService:
         if platform == "reddit":
             return self.reddit_service is not None
         elif platform == "x":
-            return self.x_service is not None
+            return (
+                self.x_service is not None and 
+                getattr(self.x_service, 'use_x_api', False)
+            )
         else:
             return False
