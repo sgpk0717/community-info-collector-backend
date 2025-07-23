@@ -97,16 +97,11 @@ async def check_x_availability():
         
         if not multi_service.is_platform_available("x"):
             return {
-                "success": True,
+                "success": False,
                 "available": False,
                 "reason": "X API is disabled",
                 "use_x_api": False,
-                "current_usage": 0,
-                "monthly_limit": 10000,
-                "daily_allowance": 0,
-                "today_usage": 0,
-                "remaining_quota": 0,
-                "days_remaining": 0
+                "error": "X API service is not available. Check configuration or Python compatibility."
             }
         
         # 사용 가능 여부 확인 (기본 5개 트윗 기준)
