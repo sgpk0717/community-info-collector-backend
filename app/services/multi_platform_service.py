@@ -7,13 +7,21 @@ from concurrent.futures import ThreadPoolExecutor
 logger = logging.getLogger(__name__)
 
 # X Service import를 조건부로 처리
-try:
-    from app.services.x_service import XService
-    X_SERVICE_AVAILABLE = True
-except (ImportError, ModuleNotFoundError) as e:
-    logger.warning(f"X Service를 로드할 수 없습니다: {str(e)}")
+import os
+DISABLE_X_SERVICE = os.getenv('DISABLE_X_SERVICE', 'false').lower() == 'true'
+
+if DISABLE_X_SERVICE:
+    logger.info("X Service가 환경변수에 의해 비활성화됨 (DISABLE_X_SERVICE=true)")
     XService = None
     X_SERVICE_AVAILABLE = False
+else:
+    try:
+        from app.services.x_service import XService
+        X_SERVICE_AVAILABLE = True
+    except (ImportError, ModuleNotFoundError) as e:
+        logger.warning(f"X Service를 로드할 수 없습니다: {str(e)}")
+        XService = None
+        X_SERVICE_AVAILABLE = False
 
 class MultiPlatformService:
     """멀티 플랫폼 통합 검색 서비스"""
