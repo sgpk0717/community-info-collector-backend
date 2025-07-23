@@ -21,6 +21,7 @@ class Report(BaseModel):
     session_id: Optional[str]
     report_char_count: Optional[int] = Field(None, description="보고서 총 글자수")
     keywords_used: Optional[List[Dict[str, Any]]] = Field(None, description="정보 수집에 사용된 키워드 목록")
+    time_filter: Optional[str] = Field(None, description="분석 기간 필터")
 
 class ReportCreate(BaseModel):
     user_nickname: Optional[str]
@@ -31,6 +32,7 @@ class ReportCreate(BaseModel):
     report_length: str = "moderate"
     session_id: Optional[str]
     keywords_used: Optional[List[Dict[str, Any]]] = None
+    time_filter: Optional[str] = None
 
 class ReportList(BaseModel):
     reports: List[Report]

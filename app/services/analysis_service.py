@@ -176,7 +176,8 @@ class AnalysisService:
                 posts_collected=len(unique_posts),
                 report_length=request.length.value,
                 session_id=request.session_id,
-                keywords_used=keywords_used
+                keywords_used=keywords_used,
+                time_filter=request.time_filter.value if request.time_filter else None
             )
             
             report_id = await self.db_service.save_report(report_create)
