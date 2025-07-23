@@ -11,7 +11,7 @@ class XUsageService:
     """X API 사용량 관리 서비스 - Free 티어 최적화"""
     
     MONTHLY_LIMIT = 10000  # Free 티어 월 한도
-    SAFETY_MARGIN = 0.9    # 90%만 사용 (안전 마진)
+    SAFETY_MARGIN = 1.0    # 100% 사용 (안전 마진 제거)
     
     def __init__(self):
         self.client: Client = get_supabase_client()
