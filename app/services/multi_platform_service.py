@@ -8,10 +8,12 @@ logger = logging.getLogger(__name__)
 
 # X Service import를 조건부로 처리
 import os
-DISABLE_X_SERVICE = os.getenv('DISABLE_X_SERVICE', 'false').lower() == 'true'
 
-if DISABLE_X_SERVICE:
-    logger.info("X Service가 환경변수에 의해 비활성화됨 (DISABLE_X_SERVICE=true)")
+# USE_X_API가 false면 X 서비스를 아예 import하지 않음
+USE_X_API = os.getenv('USE_X_API', 'true').lower() == 'true'
+
+if not USE_X_API:
+    logger.info("X Service가 환경변수에 의해 비활성화됨 (USE_X_API=false)")
     XService = None
     X_SERVICE_AVAILABLE = False
 else:
@@ -20,6 +22,7 @@ else:
         X_SERVICE_AVAILABLE = True
     except (ImportError, ModuleNotFoundError) as e:
         logger.warning(f"X Service를 로드할 수 없습니다: {str(e)}")
+        logger.warning("Python 3.13 호환성 문제일 수 있습니다. USE_X_API=false로 설정하세요.")
         XService = None
         X_SERVICE_AVAILABLE = False
 
