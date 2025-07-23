@@ -88,3 +88,43 @@ async def get_x_usage_stats():
             "success": False,
             "error": str(e)
         }
+
+@router.get("/platforms/x/availability", response_model=Dict[str, Any])
+async def check_x_availability():
+    """X API 사용 가능 여부 및 현재 상태 확인"""
+    try:
+        multi_service = MultiPlatformService()
+        
+        if not multi_service.is_platform_available("x"):
+            return {
+                "success": True,
+                "available": False,
+                "reason": "X API is disabled",
+                "use_x_api": False
+            }
+        
+        # 사용 가능 여부 확인 (기본 5개 트윗 기준)
+        availability = await multi_service.x_service.usage_service.can_use_api(
+            tweets_needed=10
+        )
+        
+        return {
+            "success": True,
+            "available": availability["can_use"],
+            "reason": availability.get("reason", "unknown"),
+            "use_x_api": True,
+            "current_usage": availability.get("current_usage", 0),
+            "monthly_limit": availability.get("monthly_limit", 10000),
+            "daily_allowance": availability.get("daily_allowance", 0),
+            "today_usage": availability.get("today_usage", 0),
+            "remaining_quota": availability.get("remaining_quota", 0),
+            "days_remaining": availability.get("days_remaining", 0)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ X API 가용성 확인 실패: {str(e)}")
+        return {
+            "success": False,
+            "available": False,
+            "error": str(e)
+        }

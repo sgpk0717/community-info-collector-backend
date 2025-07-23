@@ -41,7 +41,8 @@ class MultiPlatformService:
         sources: List[str], 
         user_nickname: str = "system",
         reddit_limit: int = 45,
-        x_limit: int = 10  # X API 최소 요구사항
+        x_limit: int = 10,  # X API 최소 요구사항
+        force_x_api: bool = False  # X API 강제 사용 옵션
     ) -> List[Dict[str, Any]]:
         """모든 플랫폼에서 검색 - Reddit 90% + X 10% 비율"""
         
@@ -59,7 +60,9 @@ class MultiPlatformService:
         # X 검색 (극도로 제한적, 낮은 비율)
         if 'x' in sources and self.x_service:
             logger.info(f"🐦 X 검색 예정: 최대 {x_limit}개 트윗 (사용량 체크 후)")
-            tasks.append(self._search_x(query, x_limit, user_nickname))
+            if force_x_api:
+                logger.info("⚠️ X API 강제 사용 모드 활성화")
+            tasks.append(self._search_x(query, x_limit, user_nickname, force_x_api))
         
         # 병렬 실행
         if tasks:
@@ -107,13 +110,14 @@ class MultiPlatformService:
             logger.error(f"❌ Reddit 검색 실패: {str(e)}")
             return []
     
-    async def _search_x(self, query: str, limit: int, user_nickname: str) -> List[Dict[str, Any]]:
+    async def _search_x(self, query: str, limit: int, user_nickname: str, force: bool = False) -> List[Dict[str, Any]]:
         """X 검색 (내부 메서드)"""
         try:
             x_tweets = await self.x_service.search_tweets(
                 query=query,
                 max_results=limit,
-                user_nickname=user_nickname
+                user_nickname=user_nickname,
+                force=force
             )
             
             # Reddit 호환 형식으로 정규화

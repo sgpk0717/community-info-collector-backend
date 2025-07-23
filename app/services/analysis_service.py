@@ -99,7 +99,8 @@ class AnalysisService:
                 sources=request.sources,
                 user_nickname=request.user_nickname,
                 reddit_limit=45,  # Reddit은 충분히 많이
-                x_limit=10        # X는 최소한만 (API 제한으로 최소 10개)
+                x_limit=10,       # X는 최소한만 (API 제한으로 최소 10개)
+                force_x_api=request.force_x_api if hasattr(request, 'force_x_api') else False
             )
             
             if progress_callback:

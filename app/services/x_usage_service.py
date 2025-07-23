@@ -72,7 +72,7 @@ class XUsageService:
             logger.error(f"❌ 오늘 사용량 조회 실패: {str(e)}")
             return 0
     
-    async def can_use_api(self, user_nickname: str = "system", tweets_needed: int = 5) -> Dict[str, Any]:
+    async def can_use_api(self, user_nickname: str = "system", tweets_needed: int = 5, force: bool = False) -> Dict[str, Any]:
         """API 사용 가능 여부 확인"""
         try:
             # 현재 월의 사용량 조회
@@ -93,15 +93,41 @@ class XUsageService:
             # 오늘 사용량
             today_usage = await self.get_today_usage(user_nickname)
             
-            # 사용 가능 여부
-            can_use = (
-                remaining_quota > 0 and 
-                today_usage + tweets_needed <= daily_allowance and
-                current_usage + tweets_needed <= safe_limit
-            )
+            # 월간 한도 절대 초과 불가
+            monthly_exceeded = current_usage + tweets_needed > self.MONTHLY_LIMIT
+            
+            # 일일 할당량 초과 여부
+            daily_exceeded = today_usage + tweets_needed > daily_allowance
+            
+            # 안전 한도 초과 여부
+            safe_exceeded = current_usage + tweets_needed > safe_limit
+            
+            # 사용 가능 여부 판단
+            if force:
+                # 강제 모드: 월간 한도만 체크
+                can_use = not monthly_exceeded
+                if monthly_exceeded:
+                    reason = "monthly_limit_exceeded"
+                elif daily_exceeded:
+                    reason = "daily_limit_ignored"
+                else:
+                    reason = "forced"
+            else:
+                # 일반 모드: 모든 제한 체크
+                can_use = not (monthly_exceeded or daily_exceeded or safe_exceeded)
+                if monthly_exceeded:
+                    reason = "monthly_limit_exceeded"
+                elif daily_exceeded:
+                    reason = "daily_limit_exceeded"
+                elif safe_exceeded:
+                    reason = "safe_limit_exceeded"
+                else:
+                    reason = "allowed"
             
             result = {
                 "can_use": can_use,
+                "reason": reason,
+                "force_mode": force,
                 "current_usage": current_usage,
                 "monthly_limit": self.MONTHLY_LIMIT,
                 "safe_limit": safe_limit,
@@ -109,7 +135,10 @@ class XUsageService:
                 "daily_allowance": int(daily_allowance),
                 "today_usage": today_usage,
                 "days_remaining": days_remaining,
-                "tweets_needed": tweets_needed
+                "tweets_needed": tweets_needed,
+                "monthly_exceeded": monthly_exceeded,
+                "daily_exceeded": daily_exceeded,
+                "safe_exceeded": safe_exceeded
             }
             
             if can_use:

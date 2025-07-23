@@ -45,6 +45,9 @@ class SearchRequest(BaseModel):
     schedule_count: Optional[int] = Field(None, gt=0, description="스케줄링 반복 횟수")
     schedule_start_time: Optional[datetime] = Field(None, description="스케줄링 시작 시간")
     
+    # X API 강제 사용 옵션
+    force_x_api: bool = Field(default=False, description="X API 일일 한도 초과 시에도 강제 사용")
+    
     @validator('start_date', 'end_date')
     def validate_custom_dates(cls, v, values):
         """custom 모드일 때만 날짜 검증"""

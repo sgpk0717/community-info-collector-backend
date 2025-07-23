@@ -71,7 +71,7 @@ class XService:
             logger.error(f"❌ 트윗 처리 실패: {str(e)}")
             return None
     
-    async def search_tweets(self, query: str, max_results: int = 10, user_nickname: str = "system") -> List[Dict[str, Any]]:
+    async def search_tweets(self, query: str, max_results: int = 10, user_nickname: str = "system", force: bool = False) -> List[Dict[str, Any]]:
         """트윗 검색 - 사용량 체크 후 실행"""
         # X API가 비활성화된 경우 빈 리스트 반환
         if not self.use_x_api:
@@ -82,11 +82,15 @@ class XService:
             logger.info(f"🔍 X API 검색 시작: '{query}' (최대 {max_results}개)")
             
             # 1. 사용량 체크
-            usage_check = await self.usage_service.can_use_api(user_nickname, max_results)
+            usage_check = await self.usage_service.can_use_api(user_nickname, max_results, force=force)
             
             if not usage_check.get('can_use', False):
-                logger.warning(f"⚠️ X API 사용 제한 - {usage_check}")
-                return []
+                reason = usage_check.get('reason', 'unknown')
+                if force and reason == 'daily_limit_ignored':
+                    logger.warning(f"⚠️ X API 일일 한도 초과 - 강제 사용 모드로 진행")
+                else:
+                    logger.warning(f"⚠️ X API 사용 제한 - {usage_check}")
+                    return []
             
             # 2. Free 티어 제한 적용 (최소 10개, 최대 100개)
             max_results = max(10, min(max_results, 100))  # Free 티어는 10-100개
