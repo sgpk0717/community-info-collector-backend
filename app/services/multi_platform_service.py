@@ -1,9 +1,18 @@
 from typing import List, Dict, Any, Optional
 from app.services.reddit_service import RedditService
-from app.services.x_service import XService
 import logging
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+
+# X Service import를 조건부로 처리
+try:
+    from app.services.x_service import XService
+    X_SERVICE_AVAILABLE = True
+except ImportError as e:
+    logger = logging.getLogger(__name__)
+    logger.warning(f"X Service를 로드할 수 없습니다: {str(e)}")
+    XService = None
+    X_SERVICE_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -18,16 +27,20 @@ class MultiPlatformService:
             logger.error(f"❌ Reddit 서비스 초기화 실패: {str(e)}")
             self.reddit_service = None
         
-        try:
-            self.x_service = XService(thread_pool=thread_pool)
-            # USE_X_API가 false인 경우 메시지
-            if self.x_service and not getattr(self.x_service, 'use_x_api', True):
-                logger.info("ℹ️ X 서비스가 환경변수 설정에 의해 비활성화됨 (USE_X_API=false)")
-            else:
-                logger.info("✅ X 서비스 초기화 완료")
-        except Exception as e:
-            logger.error(f"❌ X 서비스 초기화 실패: {str(e)}")
-            logger.warning("X API 자격 증명을 확인하세요. Reddit만 사용됩니다.")
+        if X_SERVICE_AVAILABLE:
+            try:
+                self.x_service = XService(thread_pool=thread_pool)
+                # USE_X_API가 false인 경우 메시지
+                if self.x_service and not getattr(self.x_service, 'use_x_api', True):
+                    logger.info("ℹ️ X 서비스가 환경변수 설정에 의해 비활성화됨 (USE_X_API=false)")
+                else:
+                    logger.info("✅ X 서비스 초기화 완료")
+            except Exception as e:
+                logger.error(f"❌ X 서비스 초기화 실패: {str(e)}")
+                logger.warning("X API 자격 증명을 확인하세요. Reddit만 사용됩니다.")
+                self.x_service = None
+        else:
+            logger.warning("⚠️ X 서비스를 사용할 수 없습니다 (Python 3.13 호환성 문제)")
             self.x_service = None
         
         self.thread_pool = thread_pool
