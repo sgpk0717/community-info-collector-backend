@@ -1,0 +1,56 @@
+/Users/seonggukpark/.pyenv/versions/3.11.7/lib/python3.11/site-packages/pydantic/_internal/_config.py:345: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+INFO:     Started server process [45087]
+INFO:     Waiting for application startup.
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - ================================================================================
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - 🚀 Community Info Collector API v2.0.0 서버 시작!
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - 🌍 환경: development
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - 📊 로그 레벨: INFO
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - ================================================================================
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - 📋 환경 정보:
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - PORT 환경변수: NOT SET
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - 호스트명: 83763.local
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - Python 버전: 3.11.7 (main, Jan 17 2025, 12:04:08) [Clang 15.0.0 (clang-1500.3.9.4)]
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - 현재 작업 디렉토리: /Users/seonggukpark/community-info-collector-v2.0/backend
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - ================================================================================
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - 🔗 사용 가능한 API 엔드포인트:
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - 헬스체크: GET /
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - API 문서: GET /docs
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - 사용자 등록: POST /api/v1/users/register
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - 사용자 로그인: POST /api/v1/users/login
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - 검색 요청: POST /api/v1/search
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - 보고서 조회: GET /api/v1/reports/{user_nickname}
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - ================================================================================
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - 🛡️ 활성화된 미들웨어:
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    1. RequestLoggingMiddleware (요청 로깅)
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    2. CORSMiddleware (CORS 처리)
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -       - 허용된 Origin: ['*']
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - ================================================================================
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - 🎯 서비스 상태:
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - 컬러 로깅 시스템: ✅ 활성화
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - Reddit API: ✅ 준비됨
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - OpenAI API: ✅ 준비됨
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - Supabase DB: ✅ 준비됨
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - Thread Pool: ✅ 10 workers
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - Process Pool: ✅ 4 workers
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - API Semaphore: ✅ 5 concurrent calls
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - ================================================================================
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - 📡 서버 접속 정보:
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - 로컬: http://0.0.0.0:10000
+2025-07-22 02:15:01 - app.main - [92mINFO[0m -    - 프로덕션: https://community-info-collector-backend.onrender.com
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - ================================================================================
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - ✅ 모든 시스템 준비 완료! 분석 요청을 기다리는 중...
+2025-07-22 02:15:01 - app.main - [92mINFO[0m - ================================================================================
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+2025-07-22 02:16:06 - app.main - [92mINFO[0m - ==================================================
+2025-07-22 02:16:06 - app.main - [92mINFO[0m - 🛑 서버 종료 중...
+2025-07-22 02:16:06 - app.main - [92mINFO[0m -    - Thread Pool 종료 중...
+2025-07-22 02:16:06 - app.main - [92mINFO[0m -    - Process Pool 종료 중...
+2025-07-22 02:16:06 - app.main - [92mINFO[0m - 👋 안녕히 가세요!
+2025-07-22 02:16:06 - app.main - [92mINFO[0m - ==================================================
+INFO:     Application shutdown complete.
+INFO:     Finished server process [45087]
