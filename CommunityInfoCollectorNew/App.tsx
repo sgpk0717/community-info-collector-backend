@@ -12,12 +12,15 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logService } from './src/services/log.service';
+import Icon from 'react-native-vector-icons/Ionicons';
 
 // Import screens
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
+import SplashScreen from './src/screens/SplashScreen';
+import SecondSplashScreen from './src/screens/SecondSplashScreen';
 
 // API base URL
 const API_BASE_URL = 'https://community-info-collector-backend.onrender.com';
@@ -40,6 +43,8 @@ function App(): JSX.Element {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userNickname, setUserNickname] = useState('');
   const [currentScreen, setCurrentScreen] = useState<'login' | 'register' | 'main'>('login');
+  const [showInitialSplash, setShowInitialSplash] = useState(true);
+  const [showSecondSplash, setShowSecondSplash] = useState(false);
 
   useEffect(() => {
     checkAuthStatus();
@@ -51,7 +56,7 @@ function App(): JSX.Element {
       if (savedNickname) {
         setUserNickname(savedNickname);
         setIsAuthenticated(true);
-        setCurrentScreen('main');
+        setShowSecondSplash(true);
         logService.info('자동 로그인 성공', { nickname: savedNickname });
       }
     } catch (error) {
@@ -75,7 +80,7 @@ function App(): JSX.Element {
         await AsyncStorage.setItem('savedNickname', nickname.trim());
         setUserNickname(nickname.trim());
         setIsAuthenticated(true);
-        setCurrentScreen('main');
+        setShowSecondSplash(true);
         logService.info('로그인 성공', { nickname: nickname.trim() });
       } else if (response.status === 404) {
         Alert.alert(
@@ -136,11 +141,27 @@ function App(): JSX.Element {
     logService.info('로그아웃');
   };
 
+  if (showInitialSplash) {
+    return <SplashScreen onFinish={() => setShowInitialSplash(false)} />;
+  }
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
       </View>
+    );
+  }
+
+  if (showSecondSplash) {
+    return (
+      <SecondSplashScreen
+        userNickname={userNickname}
+        onFinish={() => {
+          setShowSecondSplash(false);
+          setCurrentScreen('main');
+        }}
+      />
     );
   }
 
@@ -186,9 +207,7 @@ function App(): JSX.Element {
           options={{
             title: '실시간 분석',
             tabBarIcon: ({ color, size }) => (
-              <View style={styles.tabIconContainer}>
-                <Text style={[styles.tabIcon, { color }]}>🔍</Text>
-              </View>
+              <Icon name="search-outline" size={24} color={color} />
             ),
             headerTitle: () => (
               <View style={styles.headerContainer}>
@@ -198,7 +217,7 @@ function App(): JSX.Element {
             ),
             headerRight: () => (
               <View style={styles.profileButton}>
-                <Text style={styles.profileIcon}>👤</Text>
+                <Icon name="person-outline" size={20} color="#8E8E93" />
               </View>
             ),
           }}
@@ -210,9 +229,7 @@ function App(): JSX.Element {
           options={{
             title: '보고서',
             tabBarIcon: ({ color, size }) => (
-              <View style={styles.tabIconContainer}>
-                <Text style={[styles.tabIcon, { color }]}>📋</Text>
-              </View>
+              <Icon name="document-text-outline" size={24} color={color} />
             ),
             headerTitle: '보고서',
           }}
@@ -254,14 +271,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   profileIcon: {
-    fontSize: 20,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#8E8E93',
+  },
+  headerRightButton: {
+    marginRight: 16,
+    padding: 8,
   },
   tabIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },
   tabIcon: {
-    fontSize: 24,
+    fontSize: 20,
+    fontWeight: '700',
   },
 });
 

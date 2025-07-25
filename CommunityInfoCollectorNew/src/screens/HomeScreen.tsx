@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,9 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
+import Icon from 'react-native-vector-icons/Ionicons';
 
 interface HomeScreenProps {
   userNickname: string;
@@ -34,9 +36,9 @@ export default function HomeScreen({ userNickname, apiBaseUrl }: HomeScreenProps
   const [selectedSources, setSelectedSources] = useState<DataSource[]>(['reddit']);
   const [isLoading, setIsLoading] = useState(false);
   const [twitterApiStatus, setTwitterApiStatus] = useState({
-    used: 12345,
+    used: 0,
     limit: 50000,
-    resetDate: '2024-12-25',
+    resetDate: new Date().toISOString().split('T')[0],
   });
 
   const reportLengthOptions = [
@@ -55,9 +57,29 @@ export default function HomeScreen({ userNickname, apiBaseUrl }: HomeScreenProps
   ] as const;
 
   const dataSources: DataSourceInfo[] = [
-    { id: 'reddit', name: 'Reddit', icon: '🔴', isActive: true },
-    { id: 'twitter', name: 'X (Twitter)', icon: '✖️', isActive: true },
+    { id: 'reddit', name: 'Reddit', icon: 'logo-reddit', isActive: true },
+    { id: 'twitter', name: 'X (Twitter)', icon: 'logo-twitter', isActive: true },
   ];
+
+  useEffect(() => {
+    fetchXApiUsage();
+  }, []);
+
+  const fetchXApiUsage = async () => {
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/v1/x-api-usage`);
+      if (response.ok) {
+        const data = await response.json();
+        setTwitterApiStatus({
+          used: data.used,
+          limit: data.limit,
+          resetDate: data.reset_date,
+        });
+      }
+    } catch (error) {
+      console.error('X API 사용량 조회 실패:', error);
+    }
+  };
 
   const toggleDataSource = (source: DataSource) => {
     setSelectedSources(prev => {
@@ -194,7 +216,9 @@ export default function HomeScreen({ userNickname, apiBaseUrl }: HomeScreenProps
                 onPress={() => toggleDataSource(source.id)}
                 disabled={isLoading || !source.isActive}
               >
-                <Text style={styles.sourceIcon}>{source.icon}</Text>
+                <View style={styles.sourceIconContainer}>
+                  <Icon name={source.icon} size={24} color="#8E8E93" />
+                </View>
                 <Text style={styles.sourceName}>{source.name}</Text>
                 {selectedSources.includes(source.id) && (
                   <View style={styles.checkmark}>
@@ -344,10 +368,21 @@ const styles = StyleSheet.create({
   },
   sourceCardActive: {
     borderColor: '#007AFF',
+    backgroundColor: '#0A0A0A',
+  },
+  sourceIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#2C2C2E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   sourceIcon: {
-    fontSize: 32,
-    marginBottom: 8,
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#8E8E93',
   },
   sourceName: {
     fontSize: 14,
