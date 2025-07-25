@@ -47,7 +47,21 @@ function App(): JSX.Element {
   const [showSecondSplash, setShowSecondSplash] = useState(false);
 
   useEffect(() => {
+    console.log('App started, checking auth status...');
     checkAuthStatus();
+    
+    // Health check
+    fetch(`${API_BASE_URL}/health`)
+      .then(response => {
+        console.log('Health check response:', response.status);
+        return response.text();
+      })
+      .then(text => {
+        console.log('Health check response body:', text);
+      })
+      .catch(error => {
+        console.error('Health check failed:', error);
+      });
   }, []);
 
   const checkAuthStatus = async () => {
