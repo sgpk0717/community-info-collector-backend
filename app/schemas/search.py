@@ -12,7 +12,7 @@ class ReportLength(str, Enum):
 class SearchSource(str, Enum):
     reddit = "reddit"
     threads = "threads"
-    x = "x"  # X(Twitter) 플랫폼
+    twitter = "twitter"
 
 class TimeFilter(str, Enum):
     """시간 필터 옵션"""
@@ -44,9 +44,6 @@ class SearchRequest(BaseModel):
     schedule_period: Optional[int] = Field(None, gt=0, description="스케줄링 주기(분)")
     schedule_count: Optional[int] = Field(None, gt=0, description="스케줄링 반복 횟수")
     schedule_start_time: Optional[datetime] = Field(None, description="스케줄링 시작 시간")
-    
-    # X API 강제 사용 옵션
-    force_x_api: bool = Field(default=False, description="X API 일일 한도 초과 시에도 강제 사용")
     
     @validator('start_date', 'end_date')
     def validate_custom_dates(cls, v, values):

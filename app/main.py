@@ -8,6 +8,16 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import pytz
 import datetime
+import ssl
+import os
+
+# SSL 인증서 검증 비활성화 (개발 환경용)
+os.environ['PYTHONHTTPSVERIFY'] = '0'
+os.environ['CURL_CA_BUNDLE'] = ''
+
+# macOS에서 SSL 인증서 문제 해결
+if hasattr(ssl, '_create_unverified_context'):
+    ssl._create_default_https_context = ssl._create_unverified_context
 
 # 한국 시간대 설정
 KST = pytz.timezone('Asia/Seoul')

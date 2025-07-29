@@ -103,6 +103,20 @@ class AnalysisService:
                 force_x_api=request.force_x_api if hasattr(request, 'force_x_api') else False
             )
             
+            # X API 사용량 업데이트
+            x_posts_count = len([p for p in all_posts if p.get('platform') == 'x'])
+            if x_posts_count > 0:
+                try:
+                    import httpx
+                    async with httpx.AsyncClient() as client:
+                        await client.post(
+                            "http://localhost:8000/api/v1/x-api-usage/increment",
+                            json={"count": x_posts_count}
+                        )
+                        logger.info(f"X API 사용량 업데이트: {x_posts_count}개")
+                except Exception as e:
+                    logger.warning(f"X API 사용량 업데이트 실패: {str(e)}")
+            
             if progress_callback:
                 reddit_count = len([p for p in all_posts if p.get('platform') == 'reddit'])
                 x_count = len([p for p in all_posts if p.get('platform') == 'x'])
