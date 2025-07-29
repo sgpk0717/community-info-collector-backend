@@ -10,7 +10,7 @@ class SimpleSearchRequest(BaseModel):
     query: str = "테슬라의 미래"
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "query": "테슬라의 미래"
             }
