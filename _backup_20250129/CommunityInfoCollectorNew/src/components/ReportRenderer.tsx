@@ -23,8 +23,21 @@ interface FootnoteLink {
   created_utc: string;
 }
 
+interface Report {
+  id: string;
+  query_text: string;
+  created_at: string;
+  summary: string;
+  full_report?: string;
+  time_filter?: string;
+  posts_collected: number;
+  report_length?: string;
+}
+
 interface ReportRendererProps {
-  fullReport: string;
+  visible: boolean;
+  report: Report;
+  onClose: () => void;
   reportLinks?: FootnoteLink[];
   keywords?: Array<{
     keyword: string;
@@ -32,12 +45,13 @@ interface ReportRendererProps {
     posts_found: number;
     sample_titles: string[];
   }>;
-  onClose?: () => void;
 }
 
-export default function ReportRenderer({ fullReport, reportLinks = [], keywords = [], onClose }: ReportRendererProps) {
+export default function ReportRenderer({ visible, report, onClose, reportLinks = [], keywords = [] }: ReportRendererProps) {
   const [selectedFootnote, setSelectedFootnote] = useState<FootnoteLink | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  
+  const fullReport = report?.full_report || '';
   
   useEffect(() => {
     logService.info('ReportRenderer 마운트', {
@@ -323,44 +337,63 @@ export default function ReportRenderer({ fullReport, reportLinks = [], keywords 
   };
 
   return (
-    <View style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
-          {renderReport()}
-          
-          {/* 정보 수집 과정 표시 */}
-          {keywords && keywords.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>정보 수집 과정</Text>
-              <View style={styles.keywordsContainer}>
-                <Text style={styles.subsectionTitle}>사용된 키워드</Text>
-                {keywords.map((kw, index) => (
-                  <View key={index} style={styles.keywordItem}>
-                    <View style={styles.keywordHeader}>
-                      <Text style={styles.keywordText}>
-                        {index + 1}. {kw.keyword}
-                        {kw.translated_keyword && ` → ${kw.translated_keyword}`}
-                      </Text>
-                      <Text style={styles.postsFoundText}>
-                        {kw.posts_found}개 게시물
-                      </Text>
-                    </View>
-                    {kw.sample_titles && kw.sample_titles.length > 0 && (
-                      <View style={styles.sampleTitles}>
-                        {kw.sample_titles.map((title, titleIndex) => (
-                          <Text key={titleIndex} style={styles.sampleTitle} numberOfLines={1}>
-                            • {title}
-                          </Text>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
+    <Modal
+      animationType="slide"
+      transparent={false}
+      visible={visible}
+      onRequestClose={onClose}
+    >
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>{report?.query_text || '보고서'}</Text>
+            <Text style={styles.headerSubtitle}>
+              {report?.created_at ? new Date(report.created_at).toLocaleDateString('ko-KR') : ''}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={onClose} style={styles.headerCloseButton}>
+            <Text style={styles.headerCloseText}>닫기</Text>
+          </TouchableOpacity>
         </View>
-      </ScrollView>
+        
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <View style={styles.content}>
+            {renderReport()}
+            
+            {/* 정보 수집 과정 표시 */}
+            {keywords && keywords.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>정보 수집 과정</Text>
+                <View style={styles.keywordsContainer}>
+                  <Text style={styles.subsectionTitle}>사용된 키워드</Text>
+                  {keywords.map((kw, index) => (
+                    <View key={index} style={styles.keywordItem}>
+                      <View style={styles.keywordHeader}>
+                        <Text style={styles.keywordText}>
+                          {index + 1}. {kw.keyword}
+                          {kw.translated_keyword && ` → ${kw.translated_keyword}`}
+                        </Text>
+                        <Text style={styles.postsFoundText}>
+                          {kw.posts_found}개 게시물
+                        </Text>
+                      </View>
+                      {kw.sample_titles && kw.sample_titles.length > 0 && (
+                        <View style={styles.sampleTitles}>
+                          {kw.sample_titles.map((title, titleIndex) => (
+                            <Text key={titleIndex} style={styles.sampleTitle} numberOfLines={1}>
+                              • {title}
+                            </Text>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      </SafeAreaView>
 
       {/* 각주 상세 정보 모달 */}
       <Modal
@@ -425,13 +458,46 @@ export default function ReportRenderer({ fullReport, reportLinks = [], keywords 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#000000',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+    backgroundColor: '#000000',
+  },
+  headerTitleContainer: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#8E8E93',
+    marginTop: 4,
+  },
+  headerCloseButton: {
+    paddingLeft: 16,
+  },
+  headerCloseText: {
+    fontSize: 16,
+    color: '#007AFF',
+    fontWeight: '600',
   },
   scrollView: {
     flex: 1,
+    backgroundColor: '#000000',
   },
   content: {
     padding: 20,
+    backgroundColor: '#000000',
   },
   section: {
     marginBottom: 24,
@@ -439,7 +505,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#1C1C1E',
+    color: '#FFFFFF',
     marginBottom: 12,
   },
   subsection: {
@@ -448,7 +514,7 @@ const styles = StyleSheet.create({
   subsectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: '#FFFFFF',
     marginBottom: 8,
   },
   paragraph: {
@@ -457,7 +523,7 @@ const styles = StyleSheet.create({
   paragraphText: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#3C3C43',
+    color: '#E5E5E7',
   },
   footnoteButton: {
     marginHorizontal: 2,
@@ -476,14 +542,14 @@ const styles = StyleSheet.create({
     paddingLeft: 16,
     borderLeftWidth: 4,
     borderLeftColor: '#007AFF',
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#1C1C1E',
     padding: 12,
     borderRadius: 8,
   },
   blockquoteText: {
     fontSize: 14,
     lineHeight: 20,
-    color: '#3C3C43',
+    color: '#E5E5E7',
     fontStyle: 'italic',
   },
   list: {
@@ -496,7 +562,7 @@ const styles = StyleSheet.create({
   },
   listBullet: {
     fontSize: 15,
-    color: '#3C3C43',
+    color: '#E5E5E7',
     marginRight: 8,
     width: 20,
   },
@@ -504,7 +570,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     lineHeight: 22,
-    color: '#3C3C43',
+    color: '#E5E5E7',
   },
   modalOverlay: {
     flex: 1,
@@ -589,7 +655,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   keywordsContainer: {
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#1C1C1E',
     borderRadius: 12,
     padding: 16,
     marginTop: 8,
@@ -606,7 +672,7 @@ const styles = StyleSheet.create({
   keywordText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: '#FFFFFF',
     flex: 1,
   },
   postsFoundText: {

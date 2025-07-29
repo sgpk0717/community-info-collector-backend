@@ -13,6 +13,7 @@ import {
   PanResponder,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import ReportRenderer from '../components/ReportRenderer';
 
 interface ReportsScreenProps {
   userNickname: string;
@@ -226,6 +227,8 @@ export default function ReportsScreen({ userNickname, apiBaseUrl }: ReportsScree
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedReports, setSelectedReports] = useState<Set<string>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const [showReportDetail, setShowReportDetail] = useState(false);
 
   useEffect(() => {
     fetchReports();
@@ -349,8 +352,8 @@ export default function ReportsScreen({ userNickname, apiBaseUrl }: ReportsScree
     <SwipeableReportCard
       report={item}
       onPress={() => {
-        // 보고서 상세 보기 로직
-        Alert.alert('보고서 상세', '보고서 상세 화면으로 이동');
+        setSelectedReport(item);
+        setShowReportDetail(true);
       }}
       onDelete={() => handleDeleteReport(item.id)}
       isSelected={selectedReports.has(item.id)}
@@ -417,6 +420,18 @@ export default function ReportsScreen({ userNickname, apiBaseUrl }: ReportsScree
         }
         ListEmptyComponent={renderEmpty}
       />
+      
+      {/* 보고서 상세 화면 */}
+      {selectedReport && (
+        <ReportRenderer
+          visible={showReportDetail}
+          report={selectedReport}
+          onClose={() => {
+            setShowReportDetail(false);
+            setSelectedReport(null);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
